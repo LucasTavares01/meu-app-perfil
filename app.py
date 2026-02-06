@@ -3,7 +3,7 @@ import google.generativeai as genai
 import json
 import re
 import traceback
-import time # Adicionado apenas para o horário dos logs
+import time
 
 # --- CONFIGURAÇÃO DE SEGURANÇA ---
 try:
@@ -17,15 +17,7 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- INICIALIZAÇÃO DE LOGS (NOVIDADE) ---
-if 'logs' not in st.session_state: st.session_state.logs = []
-
-def registrar_log(msg):
-    """Função auxiliar para salvar logs sem alterar a lógica principal"""
-    timestamp = time.strftime("%H:%M:%S")
-    st.session_state.logs.append(f"[{timestamp}] {msg}")
-
-# --- CSS (ESTILO VISUAL - MANTIDO INTACTO) ---
+# --- CSS (ESTILO VISUAL - IDÊNTICO AO SEU CÓDIGO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -60,13 +52,7 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        
-        /* AQUI ESTÁ O AJUSTE:
-           50px em cima (para descer da tela)
-           -20px em baixo (para puxar o título para perto) */
         margin: 50px auto -20px auto;
-        
-        /* Brilho ajustado para o tom mostarda */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -82,19 +68,18 @@ st.markdown("""
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
-        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
         text-shadow:
-            0 0 5px  #F3C623,  /* Brilho interno */
-            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
-            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
-            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
+            0 0 5px  #F3C623,
+            0 0 20px rgba(243, 198, 35, 0.8),
+            0 0 40px rgba(243, 198, 35, 0.6),
+            0 0 60px rgba(243, 198, 35, 0.4);
         text-align: center;
         line-height: 1.1;
         letter-spacing: 1px;
     }
     
     .subtitle {
-        font-size: 28px; /* Levemente reduzido para bater com a referência */
+        font-size: 28px;
         font-weight: 400;
         color: #ffffff;
         margin-top: 10px;
@@ -137,7 +122,7 @@ st.markdown("""
         background-color: #feca57;
     }
 
-    /* --- ESTILO DAS CARTAS (MANTIDO PERFEITO) --- */
+    /* --- ESTILO DAS CARTAS --- */
     .card-theme-box {
         background: #ffffff;
         padding: 20px;
@@ -196,62 +181,83 @@ st.markdown("""
         border-radius: 15px;
     }
     
-    /* Estilo simples para o log */
-    .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 5px; margin-bottom: 2px; }
+    .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 10px; border-radius: 5px; margin-bottom: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS ---
+# --- ESTADOS E LOGS ---
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
+if 'logs' not in st.session_state: st.session_state.logs = []
 
-# --- FUNÇÕES ---
+def registrar_log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{timestamp}] {msg}")
+
+# --- LÓGICA DE GERAÇÃO (CORRIGIDA PARA NÃO ESTOURAR QUOTA) ---
 def get_model():
+    # AQUI ESTAVA O ERRO: Ele pegava o modelo mais novo (2.5) que tem limite de 20 usos.
+    # AGORA: Vamos priorizar o 2.0 Flash ou 1.5 Flash que têm limites altos.
+    
     try:
-        registrar_log("Tentando listar modelos disponíveis...")
+        # Pega a lista de modelos disponíveis
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        registrar_log(f"Modelos encontrados: {models}")
+        registrar_log(f"Modelos detectados: {len(models)} modelos.")
         
-        if any('gemini-1.5-flash' in m for m in models): 
-            registrar_log("Selecionando: gemini-1.5-flash")
+        # Tenta pegar o 2.0 Flash (Rápido e bom limite)
+        if any('gemini-2.0-flash' in m for m in models):
+            registrar_log("Usando: gemini-2.0-flash (Quota Alta)")
+            return genai.GenerativeModel('gemini-2.0-flash')
+            
+        # Se não tiver, tenta o 1.5 Flash (O padrãozão robusto)
+        if any('gemini-1.5-flash' in m for m in models):
+            registrar_log("Usando: gemini-1.5-flash (Quota Alta)")
             return genai.GenerativeModel('gemini-1.5-flash')
-        if any('gemini-2.5-flash' in m for m in models): 
-            registrar_log("Selecionando: gemini-2.5-flash")
-            return genai.GenerativeModel('gemini-2.5-flash')
+            
+        # Se nada der certo, tenta o Flash Latest
+        if any('gemini-flash-latest' in m for m in models):
+            registrar_log("Usando: gemini-flash-latest")
+            return genai.GenerativeModel('gemini-flash-latest')
+
+        # Fallback final (evita o 2.5 a todo custo se tiver outro)
+        registrar_log("Usando fallback padrão: gemini-pro")
+        return genai.GenerativeModel('gemini-pro')
         
-        registrar_log("Nenhum modelo novo encontrado. Usando fallback: gemini-pro")
-        return genai.GenerativeModel('gemini-pro')
     except Exception as e:
-        registrar_log(f"ERRO ao listar modelos: {e}. Usando fallback forçado: gemini-pro")
-        return genai.GenerativeModel('gemini-pro')
+        registrar_log(f"Erro na seleção. Forçando 1.5 Flash: {e}")
+        return genai.GenerativeModel('gemini-1.5-flash')
 
 def gerar_carta():
-    registrar_log("Iniciando geração de carta...")
-    model = get_model()
-    prompt = """
-    Jogo 'Perfil 7'. Gere JSON.
-    1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-    2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-    3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
-       - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
-       - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
-    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
-    """
+    registrar_log("Iniciando geração da carta...")
     try:
+        model = get_model()
+        prompt = """
+        Jogo 'Perfil 7'. Gere JSON.
+        1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+        2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
+        3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
+           - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
+           - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
+        FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+        """
         response = model.generate_content(prompt)
-        registrar_log("Resposta recebida da IA.")
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
-            registrar_log("JSON validado com sucesso.")
+            registrar_log("Sucesso! Carta gerada.")
             st.session_state.carta = json.loads(match.group())
             st.session_state.revelado = False
         else:
-            registrar_log(f"ERRO: Resposta não contém JSON válido. Texto recebido: {text[:50]}...")
-            st.error("Erro na IA.")
+            registrar_log("Erro: JSON inválido.")
+            st.error("Erro na IA: Formato inválido.")
     except Exception as e:
-        registrar_log(f"ERRO CRÍTICO NA REQUISIÇÃO: {e}")
-        st.error(f"Erro: {e}")
+        # Se der erro de quota (429), avisa de forma amigável
+        if "429" in str(e):
+            registrar_log("ERRO DE QUOTA (429).")
+            st.error("Muitas requisições! Espere 1 minuto e tente novamente.")
+        else:
+            registrar_log(f"ERRO API: {e}")
+            st.error(f"Erro: {e}")
 
 # --- INTERFACE ---
 
@@ -266,7 +272,6 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    # Mantendo a estrutura de colunas que deixa o botão centralizado e do tamanho certo
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
@@ -313,10 +318,10 @@ else:
             st.session_state.carta = None
             st.rerun()
 
-# --- PAINEL DE LOGS (ADICIONADO NO FINAL PARA DEBUG) ---
+# --- PAINEL DE LOGS ---
 st.divider()
 with st.expander("🛠️ Logs do Sistema (Debug)"):
     if not st.session_state.logs:
         st.write("Nenhum log registrado ainda.")
-    for log_item in st.session_state.logs:
+    for log_item in st.session_state.logs[-10:]:
         st.markdown(f"<div class='log-text'>{log_item}</div>", unsafe_allow_html=True)
