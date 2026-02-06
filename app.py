@@ -3,7 +3,6 @@ import google.generativeai as genai
 import json
 import re
 import traceback
-import time
 
 # --- CONFIGURAÇÃO DE SEGURANÇA ---
 try:
@@ -17,7 +16,7 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (VISUAL IDÊNTICO AO SEU PREFERIDO) ---
+# --- CSS (ESTILO VISUAL) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -52,7 +51,13 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
+        
+        /* AQUI ESTÁ O AJUSTE:
+           50px em cima (para descer da tela)
+           -20px em baixo (para puxar o título para perto) */
         margin: 50px auto -20px auto;
+        
+        /* Brilho ajustado para o tom mostarda */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -62,24 +67,25 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - GIGANTE (100px) */
+    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
         font-size: 100px !important; 
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
+        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
         text-shadow:
-            0 0 5px  #F3C623,
-            0 0 20px rgba(243, 198, 35, 0.8),
-            0 0 40px rgba(243, 198, 35, 0.6),
-            0 0 60px rgba(243, 198, 35, 0.4);
+            0 0 5px  #F3C623,  /* Brilho interno */
+            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
+            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
+            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
         text-align: center;
         line-height: 1.1;
         letter-spacing: 1px;
     }
     
     .subtitle {
-        font-size: 28px;
+        font-size: 28px; /* Levemente reduzido para bater com a referência */
         font-weight: 400;
         color: #ffffff;
         margin-top: 10px;
@@ -122,7 +128,7 @@ st.markdown("""
         background-color: #feca57;
     }
 
-    /* --- ESTILO DAS CARTAS --- */
+    /* --- ESTILO DAS CARTAS (MANTIDO PERFEITO) --- */
     .card-theme-box {
         background: #ffffff;
         padding: 20px;
@@ -155,79 +161,70 @@ st.markdown("""
         line-height: 1.4;
     }
     
-    .special-loss { background-color: #ff7675; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .special-loss { 
+        background-color: #ff7675; 
+        color: white !important; 
+        padding: 12px; 
+        border-radius: 8px; 
+        border: none; 
+        text-align: center; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+    }
+    .special-guess { 
+        background-color: #2ed573; 
+        color: white !important; 
+        padding: 12px; 
+        border-radius: 8px; 
+        border: none; 
+        text-align: center; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+    }
     
-    .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
-    
-    .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 10px; border-radius: 5px; margin-bottom: 5px; }
+    .stSuccess { 
+        text-align: center; 
+        font-weight: bold; 
+        font-size: 18px; 
+        border-radius: 15px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS E LOGS ---
+# --- ESTADOS ---
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
-if 'logs' not in st.session_state: st.session_state.logs = []
 
-def registrar_log(msg):
-    timestamp = time.strftime("%H:%M:%S")
-    st.session_state.logs.append(f"[{timestamp}] {msg}")
+# --- FUNÇÕES ---
+def get_model():
+    try:
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        if any('gemini-1.5-flash' in m for m in models): return genai.GenerativeModel('gemini-1.5-flash')
+        if any('gemini-2.5-flash' in m for m in models): return genai.GenerativeModel('gemini-2.5-flash')
+        return genai.GenerativeModel('gemini-pro')
+    except:
+        return genai.GenerativeModel('gemini-pro')
 
-# --- LÓGICA DE GERAÇÃO EM CASCATA (FALLBACK ROBUSTO) ---
 def gerar_carta():
-    registrar_log("Iniciando geração da carta...")
-    
-    # LISTA DE MODELOS POR ORDEM DE PREFERÊNCIA/ESTABILIDADE
-    # 1. 1.5-flash: Mais rápido e estável
-    # 2. 1.5-pro: Backup robusto
-    # 3. 2.0-flash: Último recurso (frequentemente dá erro 429)
-    modelos_para_tentar = [
-        'gemini-1.5-flash',
-        'gemini-1.5-pro',
-        'gemini-2.0-flash',
-        'gemini-pro' # O antigo legado
-    ]
-    
-    sucesso = False
-    
-    for modelo_nome in modelos_para_tentar:
-        if sucesso: break
-        
-        try:
-            registrar_log(f"Tentando usar modelo: {modelo_nome}...")
-            model = genai.GenerativeModel(modelo_nome)
-            
-            prompt = """
-            Jogo 'Perfil 7'. Gere JSON.
-            1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-            2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-            3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
-               - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
-               - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
-            FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
-            """
-            
-            # Tenta gerar
-            response = model.generate_content(prompt)
-            text = response.text.replace("```json", "").replace("```", "").strip()
-            match = re.search(r'\{.*\}', text, re.DOTALL)
-            
-            if match:
-                registrar_log(f"SUCESSO com {modelo_nome}!")
-                st.session_state.carta = json.loads(match.group())
-                st.session_state.revelado = False
-                sucesso = True
-            else:
-                registrar_log(f"Falha no parse do JSON com {modelo_nome}.")
-                
-        except Exception as e:
-            # Se der erro (404, 429, etc), apenas loga e o loop tenta o próximo
-            registrar_log(f"Erro com {modelo_nome}: {str(e)[:50]}...")
-            continue
-
-    if not sucesso:
-        registrar_log("TODOS OS MODELOS FALHARAM.")
-        st.error("O sistema está sobrecarregado no momento (Erro 429). Aguarde 1 minuto e tente novamente.")
+    model = get_model()
+    prompt = """
+    Jogo 'Perfil 7'. Gere JSON.
+    1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+    2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
+    3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
+       - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
+       - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
+    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+    """
+    try:
+        response = model.generate_content(prompt)
+        text = response.text.replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            st.session_state.carta = json.loads(match.group())
+            st.session_state.revelado = False
+        else:
+            st.error("Erro na IA.")
+    except Exception as e:
+        st.error(f"Erro: {e}")
 
 # --- INTERFACE ---
 
@@ -242,11 +239,10 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    # Mantendo a estrutura de colunas original
+    # Mantendo a estrutura de colunas que deixa o botão centralizado e do tamanho certo
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            registrar_log("Botão Iniciar Clicado")
             with st.spinner('Sorteando...'):
                 gerar_carta()
                 st.rerun()
@@ -285,14 +281,5 @@ else:
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            registrar_log("Botão Nova Carta Clicado")
             st.session_state.carta = None
             st.rerun()
-
-# --- PAINEL DE LOGS ---
-st.divider()
-with st.expander("🛠️ Logs do Sistema (Debug)"):
-    if not st.session_state.logs:
-        st.write("Nenhum log registrado ainda.")
-    for log_item in st.session_state.logs:
-        st.markdown(f"<div class='log-text'>{log_item}</div>", unsafe_allow_html=True)
