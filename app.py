@@ -203,29 +203,37 @@ def obter_dados_carta():
     """Gera carta usando Groq (Llama 3.3)"""
     registrar_log("Iniciando requisição Groq...")
     
+    # PROMPT AJUSTADO PARA EVITAR REPETIÇÕES
     prompt = """
-    Jogo 'Perfil 7'. Gere JSON VÁLIDO.
-    1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-    2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-    3. REGRAS: 30% chance 'PERCA A VEZ', 30% chance 'UM PALPITE A QUALQUER HORA'.
+    Você é um gerador de cartas para o jogo 'Perfil 7'.
+    Sua tarefa é gerar um JSON com:
+    1. TEMA: Escolha entre "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+    2. RESPOSTA: O nome do que será adivinhado.
+    3. DICAS: Gere uma lista exata de 20 dicas sobre a resposta (ordem de dificuldade aleatória).
+
+    REGRAS CRÍTICAS PARA ITENS ESPECIAIS:
+    - Existe 30% de chance TOTAL de aparecer 'PERCA A VEZ'.
+    - Existe 30% de chance TOTAL de aparecer 'UM PALPITE A QUALQUER HORA'.
+    - IMPORTANTE: Se o item especial aparecer, ele deve aparecer APENAS UMA VEZ na lista inteira.
+    - NUNCA repita 'PERCA A VEZ'. Máximo 1 por carta.
+    - NUNCA repita 'UM PALPITE A QUALQUER HORA'. Máximo 1 por carta.
     
     Responda APENAS com o JSON, sem markdown.
-    FORMATO: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
     """
     
     try:
         completion = client.chat.completions.create(
-            # Modelo Llama 3.3 70B (Muito inteligente e rápido)
+            # Modelo Llama 3.3 70B (Versátil e Inteligente)
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "Você é uma API que retorna apenas JSON."},
+                {"role": "system", "content": "Você é uma API JSON. Responda apenas JSON válido."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
+            temperature=0.7, # Temperatura um pouco mais baixa ajuda a seguir regras
             max_tokens=1024,
             top_p=1,
             stream=False,
-            # Força o modo JSON para garantir que não venha texto extra
             response_format={"type": "json_object"}
         )
         
@@ -236,10 +244,38 @@ def obter_dados_carta():
         # Parse do JSON
         try:
             dados = json.loads(content)
-            registrar_log("JSON validado com sucesso!")
+            
+            # --- VALIDAÇÃO EXTRA DE SEGURANÇA (PYTHON) ---
+            # Caso a IA teime em repetir, vamos limpar via código antes de mostrar
+            dicas_limpas = []
+            tem_perca = False
+            tem_palpite = False
+            
+            for dica in dados.get('dicas', []):
+                d_upper = dica.upper()
+                if "PERCA A VEZ" in d_upper:
+                    if not tem_perca:
+                        dicas_limpas.append(dica)
+                        tem_perca = True
+                    else:
+                        # Se já tem, substitui por uma dica genérica
+                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica extra sobre {dados['resposta']}")
+                elif "PALPITE" in d_upper:
+                    if not tem_palpite:
+                        dicas_limpas.append(dica)
+                        tem_palpite = True
+                    else:
+                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica extra sobre {dados['resposta']}")
+                else:
+                    dicas_limpas.append(dica)
+            
+            # Atualiza as dicas limpas
+            dados['dicas'] = dicas_limpas[:20] # Garante 20
+            
+            registrar_log("JSON validado e higienizado!")
             return dados
+            
         except json.JSONDecodeError:
-            # Fallback com regex caso o JSON venha sujo (raro no modo json_object)
             match = re.search(r'\{.*\}', content, re.DOTALL)
             if match:
                 return json.loads(match.group())
