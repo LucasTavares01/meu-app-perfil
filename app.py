@@ -51,7 +51,8 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        margin: 0 auto 25px auto;
+        /* AQUI ESTÁ A MUDANÇA: Adicionei 50px no topo para ele descer */
+        margin: 50px auto 25px auto; 
         /* Brilho ajustado para o tom mostarda */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
@@ -64,7 +65,7 @@ st.markdown("""
     
     /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 100px !important; /* <--- AQUI: AUMENTADO E FORÇADO */
+        font-size: 100px !important; /* MANTIDO GIGANTE COMO PEDIU */
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
@@ -224,7 +225,7 @@ def gerar_carta():
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL COM NEON MOSTARDA ---
+    # --- TELA INICIAL ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
@@ -234,7 +235,7 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    # Mantendo a estrutura original de colunas que você gostou
+    # Mantendo a estrutura de colunas que deixa o botão centralizado e do tamanho certo
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
