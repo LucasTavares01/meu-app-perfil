@@ -154,7 +154,7 @@ def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
-# --- LÓGICA DE GERAÇÃO (TURBO PERFIL) ---
+# --- LÓGICA DE GERAÇÃO (TURBO PERFIL + VALIDAÇÃO DE TEMA) ---
 def obter_dados_carta():
     registrar_log("Gerando carta nível Perfil Pro...")
     
@@ -163,15 +163,15 @@ def obter_dados_carta():
     Você é o criador oficial do jogo de tabuleiro 'Perfil'.
     Sua missão: Criar uma carta de adivinhação inteligente, curiosa e difícil.
     
-    PASSO 1: Escolha um TEMA e uma RESPOSTA (Evite coisas óbvias como 'Cadeira' ou 'Cachorro'. Prefira 'Trono de Ferro', 'Ornitorrinco', 'Muralha da China').
+    REGRAS DE TEMA (CRÍTICO):
+    O campo "tema" SÓ PODE ser um destes 5 valores exatos: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+    
+    PASSO 1: Escolha um TEMA válido e uma RESPOSTA (Evite coisas óbvias como 'Cadeira' ou 'Cachorro'. Prefira 'Trono de Ferro', 'Ornitorrinco', 'Muralha da China').
 
     PASSO 2: Gere 20 dicas seguindo ESTRITAMENTE estas regras de estilo:
     
     PROIBIDO (Dicas Ruins):
-    - "É muito famoso"
-    - "Fica na Europa"
-    - "Muitas pessoas usam"
-    - "Existe há muito tempo"
+    - "É muito famoso", "Fica na Europa", "Muitas pessoas usam", "Existe há muito tempo".
     (Isso é genérico e chato. Não use!)
 
     OBRIGATÓRIO (Dicas Boas - Estilo Perfil):
@@ -190,17 +190,17 @@ def obter_dados_carta():
     - 30% de chance de aparecer 1 'UM PALPITE A QUALQUER HORA' (Máximo 1 na lista).
     
     Responda APENAS o JSON.
-    FORMATO: {"tema": "CATEGORIA", "dicas": ["1. Curiosidade obscura...", "2. Fato técnico...", ...], "resposta": "NOME EXATO"}
+    FORMATO: {"tema": "ESCOLHA_UM_DOS_5", "dicas": ["1. Curiosidade obscura...", "2. Fato técnico...", ...], "resposta": "NOME EXATO"}
     """
     
     try:
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "Você é um especialista em Trivia e Conhecimentos Gerais. Você odeia dicas genéricas."},
+                {"role": "system", "content": "Você é uma API JSON estrita. Responda apenas o JSON solicitado."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.8, # Criatividade alta para buscar fatos curiosos
+            temperature=0.8,
             max_tokens=1500,
             top_p=1,
             stream=False,
@@ -212,6 +212,17 @@ def obter_dados_carta():
         try:
             dados = json.loads(content)
             
+            # --- VALIDAÇÃO E CORREÇÃO DE TEMA ---
+            temas_validos = ["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"]
+            tema_atual = dados.get("tema", "COISA").upper()
+            
+            # Se a IA inventar moda, forçamos para "COISA" ou o mais próximo
+            if tema_atual not in temas_validos:
+                registrar_log(f"Tema corrigido: {tema_atual} -> COISA")
+                dados["tema"] = "COISA"
+            else:
+                dados["tema"] = tema_atual
+
             # --- HIGIENIZAÇÃO (Mantida por segurança) ---
             dicas_limpas = []
             tem_perca = False
@@ -235,7 +246,7 @@ def obter_dados_carta():
                     dicas_limpas.append(dica)
             
             dados['dicas'] = dicas_limpas[:20]
-            registrar_log(f"Carta criada: {dados['resposta']}")
+            registrar_log(f"Carta criada: {dados['resposta']} ({dados['tema']})")
             return dados
             
         except json.JSONDecodeError:
