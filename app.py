@@ -5,7 +5,7 @@ import re
 import traceback
 import time
 import random
-import difflib # Biblioteca para comparar similaridade de texto
+import difflib
 
 # --- CONFIGURAÇÃO DE SEGURANÇA (GROQ) ---
 try:
@@ -151,76 +151,113 @@ if 'carta' not in st.session_state: st.session_state.carta = None
 if 'reserva' not in st.session_state: st.session_state.reserva = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
 if 'logs' not in st.session_state: st.session_state.logs = []
-if 'used_answers' not in st.session_state: st.session_state.used_answers = [] # Memória de respostas
+if 'used_answers' not in st.session_state: st.session_state.used_answers = [] 
 
 def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
 def verificar_similaridade(nova_resposta):
-    """Verifica se a resposta já saiu (mesmo que escrita um pouco diferente)"""
+    """Verifica se a resposta já saiu"""
     nova = nova_resposta.lower().strip()
-    
     for usada in st.session_state.used_answers:
         usada_clean = usada.lower().strip()
-        
-        # 1. Verificação direta ou contida
         if nova in usada_clean or usada_clean in nova:
             return True
-            
-        # 2. Verificação de similaridade (Fuzzy) - 80% igual
         similaridade = difflib.SequenceMatcher(None, nova, usada_clean).ratio()
         if similaridade > 0.8:
             return True
-            
     return False
 
-# --- LÓGICA DE GERAÇÃO (COM ROLETA E ANTI-REPETIÇÃO) ---
+def selecionar_dicas_sem_spoiler(todas_dicas, resposta):
+    """
+    Filtra as dicas que contém a resposta. 
+    Descarta a dica inteira e usa as dicas EXTRAS que pedimos para a IA.
+    """
+    # Palavras proibidas (Ex: "Praça da Sé" -> ["praça", "sé"])
+    # Ignora palavras curtas ("da", "de", "o")
+    palavras_proibidas = [p for p in resposta.lower().split() if len(p) > 3]
+    
+    dicas_aprovadas = []
+    
+    for dica in todas_dicas:
+        if len(dicas_aprovadas) >= 20: # Já temos as 20 necessárias
+            break
+            
+        dica_lower = dica.lower()
+        
+        # Se for item especial, passa direto
+        if "PERCA A VEZ" in dica.upper() or "PALPITE" in dica.upper():
+            dicas_aprovadas.append(dica)
+            continue
+            
+        # Verifica se tem spoiler
+        tem_spoiler = False
+        for palavra in palavras_proibidas:
+            if palavra in dica_lower:
+                tem_spoiler = True
+                # Loga que descartou para debug
+                registrar_log(f"Dica descartada (Spoiler '{palavra}'): {dica[:30]}...")
+                break
+        
+        # Se NÃO tem spoiler, aprova
+        if not tem_spoiler:
+            dicas_aprovadas.append(dica)
+            
+    # Se por azar faltar dica (muito spoiler), completa com genérica
+    while len(dicas_aprovadas) < 20:
+        dicas_aprovadas.append(f"{len(dicas_aprovadas)+1}. Fato adicional sobre este tema.")
+        
+    return dicas_aprovadas
+
+# --- LÓGICA DE GERAÇÃO ---
 def obter_dados_carta():
     tentativas = 0
-    max_tentativas = 3 # Tenta até 3 vezes se vier repetida
+    max_tentativas = 3 
     
     while tentativas < max_tentativas:
-        # 1. ROLETA DE TEMAS (PYTHON DECIDE, NÃO A IA)
+        # 1. ROLETA DE TEMAS
         temas_possiveis = ["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"]
         tema_sorteado = random.choice(temas_possiveis)
         
-        # Lista de proibidos para o prompt (últimas 20 respostas)
         proibidos_str = ", ".join(st.session_state.used_answers[-20:]) 
         
-        registrar_log(f"Tentativa {tentativas+1}: Sorteado '{tema_sorteado}'. Evitar: [{proibidos_str[:30]}...]")
+        registrar_log(f"Tentativa {tentativas+1}: Sorteado '{tema_sorteado}'.")
         
+        # PROMPT: PEDIMOS 25 DICAS PARA TER "GORDURA" PARA QUEIMAR
         prompt = f"""
         Você é o criador oficial do jogo 'Perfil'.
         
         TAREFA: Criar uma carta para o tema OBRIGATÓRIO: "{tema_sorteado}".
         
-        PROIBIDO REPETIR ESTAS RESPOSTAS (JÁ FORAM USADAS):
-        {proibidos_str}
+        REGRAS CRÍTICAS:
+        1. Se o tema for 'ANO': A resposta deve ser APENAS O NÚMERO (Ex: 1988). Sem 'A.C.' ou texto.
+        2. GERE 25 DICAS (para que eu possa descartar as que tiverem spoiler).
+        3. A resposta NÃO PODE aparecer no texto das dicas.
         
-        DIRETRIZES DE ESTILO (CRÍTICO):
-        1. EVITE DICAS GENÉRICAS ("É famoso", "Fica na Europa", "Muito antigo").
-        2. USE FATOS CURIOSOS: Datas exatas, materiais, etimologia, fatos históricos obscuros.
-        3. DIFICULDADE: Comece muito difícil e vá facilitando.
+        PROIBIDO REPETIR: {proibidos_str}
         
-        ESTRUTURA:
-        - 20 Dicas totais.
-        - 30% chance de 'PERCA A VEZ' (Max 1).
-        - 30% chance de 'UM PALPITE A QUALQUER HORA' (Max 1).
+        ESTILO PERFIL (DIFÍCIL E CURIOSO):
+        - Use fatos obscuros, números exatos, materiais e história.
+        - Nada de "É famoso" ou "Fica na Ásia".
+        
+        ESTRUTURA DA LISTA DE DICAS:
+        - 30% chance de ter 1 'PERCA A VEZ'.
+        - 30% chance de ter 1 'UM PALPITE A QUALQUER HORA'.
         
         Retorne APENAS JSON.
-        FORMATO: {{"tema": "{tema_sorteado}", "dicas": ["..."], "resposta": "NOME ESPECÍFICO"}}
+        FORMATO: {{"tema": "{tema_sorteado}", "dicas": ["1. ...", ... "25. ..."], "resposta": "NOME"}}
         """
         
         try:
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
-                    {"role": "system", "content": "Você é uma API JSON de Trivia. Responda apenas JSON."},
+                    {"role": "system", "content": "Você é uma API JSON. Responda apenas JSON."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.85, # Alta criatividade para variar respostas
-                max_tokens=1500,
+                temperature=0.85, 
+                max_tokens=1800, # Aumentei token pois pedimos 25 dicas
                 top_p=1,
                 stream=False,
                 response_format={"type": "json_object"}
@@ -229,42 +266,55 @@ def obter_dados_carta():
             content = completion.choices[0].message.content
             dados = json.loads(content)
             
-            # Validação do Tema (Força o que foi sorteado)
+            # Validações Básicas
             dados["tema"] = tema_sorteado
-            
-            # VERIFICAÇÃO DE REPETIÇÃO
             resposta_atual = dados["resposta"]
-            if verificar_similaridade(resposta_atual):
-                registrar_log(f"REPETIDA DETECTADA: '{resposta_atual}'. Gerando outra...")
-                tentativas += 1
-                continue # Tenta de novo
             
-            # Se passou, salva na memória e processa
+            # Anti-Repetição
+            if verificar_similaridade(resposta_atual):
+                registrar_log(f"REPETIDA: '{resposta_atual}'. Retentando...")
+                tentativas += 1
+                continue 
+            
+            # Limpeza de Ano
+            if tema_sorteado == "ANO":
+                apenas_numeros = re.sub("[^0-9]", "", str(resposta_atual))
+                if len(apenas_numeros) == 4:
+                    dados["resposta"] = apenas_numeros
+            
             st.session_state.used_answers.append(resposta_atual)
             
-            # Higienização de Dicas (Como antes)
-            dicas_limpas = []
+            # --- FILTRAGEM DE SPOILERS (A GRANDE MUDANÇA) ---
+            # Pegamos as 25 dicas brutas e selecionamos as 20 melhores sem a resposta
+            dicas_brutas = dados.get('dicas', [])
+            dicas_filtradas = selecionar_dicas_sem_spoiler(dicas_brutas, resposta_atual)
+            
+            # --- FORMATAÇÃO FINAL (Itens Especiais) ---
+            dicas_finais = []
             tem_perca = False
             tem_palpite = False
             
-            for dica in dados.get('dicas', []):
+            for dica in dicas_filtradas:
                 d_upper = dica.upper()
+                
                 if "PERCA A VEZ" in d_upper:
                     if not tem_perca:
-                        dicas_limpas.append(dica)
+                        dicas_finais.append("2. PERCA A VEZ") # Posição 2 estética, mas embaralhada depois
                         tem_perca = True
                     else:
-                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica extra sobre {resposta_atual}")
+                        dicas_finais.append(f"{len(dicas_finais)+1}. Curiosidade extra sobre o tema.")
+                        
                 elif "PALPITE" in d_upper:
                     if not tem_palpite:
-                        dicas_limpas.append(dica)
+                        dicas_finais.append("6. UM PALPITE A QUALQUER HORA")
                         tem_palpite = True
                     else:
-                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Curiosidade sobre {resposta_atual}")
+                        dicas_finais.append(f"{len(dicas_finais)+1}. Fato histórico sobre o tema.")
                 else:
-                    dicas_limpas.append(dica)
+                    dicas_finais.append(dica)
             
-            dados['dicas'] = dicas_limpas[:20]
+            dados['dicas'] = dicas_finais[:20] # Corta em 20 exatas
+            
             registrar_log(f"Carta Aprovada: {resposta_atual} ({tema_sorteado})")
             return dados
             
@@ -272,7 +322,7 @@ def obter_dados_carta():
             registrar_log(f"Erro na geração: {e}")
             tentativas += 1
             
-    registrar_log("Falha após 3 tentativas de evitar repetição.")
+    registrar_log("Falha após 3 tentativas.")
     return None
 
 # --- INTERFACE ---
