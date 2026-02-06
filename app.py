@@ -196,6 +196,34 @@ def selecionar_dicas_sem_spoiler(todas_dicas, resposta):
         
     return dicas_aprovadas
 
+# ------------------ NOVO: AUDITOR DE ANO ------------------
+
+def auditar_ano_com_llm(dados):
+    prompt = f"""
+Você é um historiador extremamente rigoroso.
+
+Ano proposto: {dados['resposta']}
+
+Verifique CADA dica abaixo.
+Se QUALQUER uma NÃO pertencer a este ano, retorne valido=false.
+
+Responda APENAS JSON:
+{{"valido": true/false, "erros": []}}
+
+DICAS:
+{json.dumps(dados['dicas'], ensure_ascii=False)}
+"""
+
+    r = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0,
+        max_tokens=600,
+        response_format={"type": "json_object"}
+    )
+
+    return json.loads(r.choices[0].message.content)
+
 # --- LÓGICA DE GERAÇÃO (FACT-CHECKING) ---
 def obter_dados_carta():
     tentativas = 0
@@ -209,135 +237,77 @@ def obter_dados_carta():
         
         registrar_log(f"Tentativa {tentativas+1}: '{tema_sorteado}'.")
         
-        # 2. PROMPTS ESPECÍFICOS PARA EVITAR ALUCINAÇÃO
         if tema_sorteado == "ANO":
-            # REGRAS RÍGIDAS PARA ANOS
             prompt_especifico = """
-            DIRETRIZES OBRIGATÓRIAS PARA 'ANO':
-            1. A RESPOSTA deve ser um ANO NUMÉRICO DE 4 DÍGITOS (Ex: 1994, 1822).
-            2. TODAS as dicas devem ser eventos que ocorreram EXATAMENTE neste ano.
-            3. PROIBIDO: Usar fatos matemáticos ("x é raiz de y"), astronômicos genéricos ou científicos abstratos.
-            4. PROIBIDO: Misturar décadas. Se aconteceu em 1968, NÃO serve para 1969.
-            5. Use: Lançamento de filmes específicos, nascimento/morte de pessoas famosas, tratados assinados, invenções patenteadas.
-            6. VERIFIQUE SE O FATO É REALMENTE DAQUELE ANO. Se tiver dúvida, não use.
-            """
-        elif tema_sorteado == "DIGITAL":
-            prompt_especifico = """
-            DIRETRIZES OBRIGATÓRIAS PARA 'DIGITAL' (Empresas/Tech):
-            1. VERIFIQUE AS DATAS DE FUNDAÇÃO. Não chute. (Ex: Google é 1998, não 1991).
-            2. NÃO confunda fundadores (Ex: Bill Gates não fundou a Apple).
-            3. Use fatos sobre: Sede exata, número real de usuários, produtos principais, aquisições famosas.
-            4. Evite clichês de marketing ("Revolucionou o mundo"). Use fatos ("Criou o algoritmo PageRank").
-            """
-        elif tema_sorteado == "LUGAR":
-            prompt_especifico = """
-            DIRETRIZES OBRIGATÓRIAS PARA 'LUGAR':
-            1. PROIBIDO: "Tem praias bonitas", "É turístico", "Pessoas gostam". (Isso serve para qualquer lugar).
-            2. OBRIGATÓRIO: Dados geográficos (fronteiras, hemisfério), dados econômicos (principal exportação), fatos históricos concretos (quem colonizou, ano de independência).
-            3. Se for um país, mencione a moeda, a capital (sem dizer que é a capital no começo), ou a língua oficial.
-            """
+DIRETRIZES OBRIGATÓRIAS PARA 'ANO':
+1. A RESPOSTA deve ser um ANO NUMÉRICO DE 4 DÍGITOS.
+2. TODAS as dicas devem ser eventos EXATAMENTE deste ano.
+"""
         else:
-            prompt_especifico = """
-            DIRETRIZES PARA PESSOA/COISA:
-            1. Evite o óbvio.
-            2. Se for PESSOA: Data de nascimento, cidade natal, obras específicas, prêmios ganhos.
-            3. Se for COISA: Material químico, ano de invenção, inventor específico.
-            """
+            prompt_especifico = ""
 
         prompt = f"""
-        Você é um AUDITOR DE FATOS e verificador de enciclopédia. Não seja criativo, SEJA PRECISO.
-        
-        TAREFA: Criar carta para o tema: "{tema_sorteado}".
-        {prompt_especifico}
-        
-        REGRAS GERAIS:
-        1. GERE 25 DICAS.
-        2. A resposta NÃO PODE aparecer no texto das dicas.
-        3. DICAS DEVEM SER 100% VERDADEIRAS. Mentiras ou "chutes" resultam em falha crítica.
-        
-        PROIBIDO REPETIR: {proibidos_str}
-        
-        ESTRUTURA:
-        - 30% chance de ter 1 'PERCA A VEZ'.
-        - 30% chance de ter 1 'UM PALPITE A QUALQUER HORA'.
-        
-        Retorne APENAS JSON.
-        FORMATO: {{"tema": "{tema_sorteado}", "dicas": ["1. ...", ... "25. ..."], "resposta": "NOME"}}
-        """
+Você é um AUDITOR DE FATOS.
+
+TAREFA: Criar carta para: "{tema_sorteado}".
+
+{prompt_especifico}
+
+REGRAS:
+1. GERE 25 DICAS.
+2. DICAS DEVEM SER VERDADEIRAS.
+
+PROIBIDO REPETIR: {proibidos_str}
+
+FORMATO JSON:
+{{"tema":"{tema_sorteado}","dicas":["1..."],"resposta":"X"}}
+"""
         
         try:
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": "Você é um especialista em Trivia. Você verifica cada fato antes de escrever. Você odeia erros históricos."},
-                    {"role": "user", "content": prompt}
-                ],
-                # TEMPERATURA 0.1: CRIATIVIDADE QUASE ZERO, FOCO EM FATOS
-                temperature=0.1, 
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
                 max_tokens=1800,
-                top_p=1,
-                stream=False,
                 response_format={"type": "json_object"}
             )
             
-            content = completion.choices[0].message.content
-            dados = json.loads(content)
-            
-            dados["tema"] = tema_sorteado
+            dados = json.loads(completion.choices[0].message.content)
             resposta_atual = dados["resposta"]
-            
+
+            if tema_sorteado == "ANO":
+                apenas = re.sub("[^0-9]", "", resposta_atual)
+                if len(apenas) != 4:
+                    tentativas += 1
+                    continue
+                dados["resposta"] = apenas
+
+                auditoria = auditar_ano_com_llm(dados)
+                if not auditoria.get("valido"):
+                    registrar_log("Ano rejeitado pela auditoria.")
+                    tentativas += 1
+                    continue
+
             if verificar_similaridade(resposta_atual):
                 tentativas += 1
                 continue 
-            
-            if tema_sorteado == "ANO":
-                apenas_numeros = re.sub("[^0-9]", "", str(resposta_atual))
-                if len(apenas_numeros) == 4:
-                    dados["resposta"] = apenas_numeros
-                else:
-                    tentativas += 1
-                    continue
 
             st.session_state.used_answers.append(resposta_atual)
             
             dicas_brutas = dados.get('dicas', [])
             dicas_filtradas = selecionar_dicas_sem_spoiler(dicas_brutas, resposta_atual)
-            
-            dicas_finais = []
-            tem_perca = False
-            tem_palpite = False
-            
-            for dica in dicas_filtradas:
-                d_upper = dica.upper()
-                
-                if "PERCA A VEZ" in d_upper:
-                    if not tem_perca:
-                        dicas_finais.append("2. PERCA A VEZ") 
-                        tem_perca = True
-                    else:
-                        dicas_finais.append(f"{len(dicas_finais)+1}. Outro fato verificado sobre {resposta_atual}.")
-                        
-                elif "PALPITE" in d_upper:
-                    if not tem_palpite:
-                        dicas_finais.append("6. UM PALPITE A QUALQUER HORA")
-                        tem_palpite = True
-                    else:
-                        dicas_finais.append(f"{len(dicas_finais)+1}. Detalhe histórico sobre {resposta_atual}.")
-                else:
-                    dicas_finais.append(dica)
-            
-            dados['dicas'] = dicas_finais[:20]
-            registrar_log(f"Carta Aprovada: {resposta_atual} ({tema_sorteado})")
+
+            dados['dicas'] = dicas_filtradas[:20]
+            registrar_log(f"Carta Aprovada: {resposta_atual}")
             return dados
             
         except Exception as e:
-            registrar_log(f"Erro na geração: {e}")
+            registrar_log(f"Erro: {e}")
             tentativas += 1
             
-    registrar_log("Falha após 3 tentativas.")
     return None
 
-# --- INTERFACE ---
+# --- INTERFACE (INALTERADA) ---
 
 if not st.session_state.carta:
     # --- TELA INICIAL ---
@@ -422,3 +392,4 @@ with st.expander("🛠️ Logs do Sistema (Debug)"):
         st.write("Nenhum log registrado.")
     for log_item in st.session_state.logs[-15:]:
         st.markdown(f"<div class='log-text'>{log_item}</div>", unsafe_allow_html=True)
+
