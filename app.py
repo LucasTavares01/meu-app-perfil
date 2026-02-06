@@ -16,7 +16,7 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (ESTILO VISUAL) ---
+# --- CSS (ESTILO VISUAL - MANTIDO EXATAMENTE IGUAL) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -189,12 +189,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS ---
+# --- ESTADOS (Adicionado 'reserva' para o buffer) ---
 if 'carta' not in st.session_state: st.session_state.carta = None
+if 'reserva' not in st.session_state: st.session_state.reserva = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
 
 # --- FUNÇÕES ---
 def get_model():
+    # Mantendo a sua lógica exata que funciona
     try:
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         if any('gemini-1.5-flash' in m for m in models): return genai.GenerativeModel('gemini-1.5-flash')
@@ -203,7 +205,8 @@ def get_model():
     except:
         return genai.GenerativeModel('gemini-pro')
 
-def gerar_carta():
+def obter_dados_carta():
+    """Gera os dados da carta mas NÃO joga na tela. Retorna o JSON."""
     model = get_model()
     prompt = """
     Jogo 'Perfil 7'. Gere JSON.
@@ -219,12 +222,11 @@ def gerar_carta():
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
-            st.session_state.carta = json.loads(match.group())
-            st.session_state.revelado = False
+            return json.loads(match.group())
         else:
-            st.error("Erro na IA.")
-    except Exception as e:
-        st.error(f"Erro: {e}")
+            return None
+    except Exception:
+        return None
 
 # --- INTERFACE ---
 
@@ -243,9 +245,15 @@ if not st.session_state.carta:
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            with st.spinner('Sorteando...'):
-                gerar_carta()
-                st.rerun()
+            with st.spinner('Inicializando e criando estoque de cartas...'):
+                # GERA DUAS CARTAS NA PRIMEIRA VEZ (A atual e a reserva)
+                st.session_state.carta = obter_dados_carta()
+                st.session_state.reserva = obter_dados_carta()
+                
+                if st.session_state.carta: # Se deu certo pelo menos uma
+                    st.rerun()
+                else:
+                    st.error("Erro ao conectar com a IA. Tente novamente.")
 
 else:
     c = st.session_state.carta
@@ -280,6 +288,25 @@ else:
     
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
+        # BOTÃO COM LÓGICA DE BUFFER
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            st.session_state.carta = None
-            st.rerun()
+            if st.session_state.reserva:
+                # Usa a carta que já estava pronta (INSTANTÂNEO)
+                st.session_state.carta = st.session_state.reserva
+                st.session_state.reserva = None # Esvazia a reserva para forçar recarga
+                st.session_state.revelado = False
+                st.rerun()
+            else:
+                # Se não tiver reserva (ex: erro de conexão no background), gera na hora
+                with st.spinner("Gerando carta..."):
+                    st.session_state.carta = obter_dados_carta()
+                    st.session_state.revelado = False
+                    st.rerun()
+
+    # --- RECARGA DE BUFFER EM BACKGROUND ---
+    # Isso roda silenciosamente DEPOIS de mostrar a carta atual.
+    # Assim, enquanto você joga, a próxima carta está sendo criada.
+    if st.session_state.carta and st.session_state.reserva is None:
+        nova_reserva = obter_dados_carta()
+        if nova_reserva:
+            st.session_state.reserva = nova_reserva
