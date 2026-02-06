@@ -7,7 +7,7 @@ import traceback
 # Configuração da API
 genai.configure(api_key="AIzaSyBdiuvsktRme3A2k-HhkoQZU211mP76oV8")
 
-# Tentativa com o nome padrão mais aceito
+# Usando o identificador estável para evitar o erro 404
 model = genai.GenerativeModel('gemini-1.5-flash')
 
 # Estilização Visual (Perfil 7)
@@ -30,16 +30,19 @@ def gerar_carta():
     prompt = """
     Gere uma carta de Perfil 7 em JSON. 
     Temas: Ano, Pessoa, Lugar, Digital ou Coisa.
-    20 dicas (3 fáceis, 7 médias, 10 difíceis) em ordem ALEATÓRIA.
-    Especiais: 30% chance de 'PERCA A VEZ' ou 'UM PALPITE A QUALQUER HORA'.
-    JSON: {"tema": "...", "dicas": ["1. ", "2. "...], "resposta": "..."}
+    Gere 20 dicas numeradas de 1 a 20.
+    Dificuldade: 3 fáceis, 7 médias, 10 difíceis.
+    REGRAS: Embaralhe as posições de dificuldade aleatoriamente (1 a 20).
+    ESPECIAIS: 30% de chance de uma média ser 'PERCA A VEZ' e 30% de uma difícil ser 'UM PALPITE A QUALQUER HORA'.
+    RETORNE APENAS O JSON: {"tema": "...", "dicas": ["1. ", "2. "...], "resposta": "..."}
     """
     try:
-        # Tenta gerar o conteúdo
+        # Chamada da API com tratamento de erro específico
         response = model.generate_content(prompt)
         raw_text = response.text
         st.session_state.last_log = f"Resposta da IA:\n{raw_text}"
         
+        # Busca o conteúdo entre as chaves do JSON
         match = re.search(r'\{.*\}', raw_text, re.DOTALL)
         if match:
             st.session_state.carta = json.loads(match.group())
@@ -49,11 +52,12 @@ def gerar_carta():
     except Exception as e:
         st.session_state.last_log = f"ERRO:\n{traceback.format_exc()}"
 
+# --- Interface ---
 st.title("🃏 Perfil 7 AI")
 
 if not st.session_state.carta:
     if st.button("✨ GERAR NOVA CARTA"):
-        with st.spinner('Acessando Gemini...'):
+        with st.spinner('A IA está preparando sua carta...'):
             gerar_carta()
             st.rerun()
 else:
@@ -67,12 +71,12 @@ else:
     with col1:
         if st.button("🔍 REVELAR"): st.session_state.revelado = True
     with col2:
-        if st.button("🔄 OUTRA CARTA"):
+        if st.button("🔄 NOVA CARTA"):
             st.session_state.carta = None
             st.rerun()
 
     if st.session_state.revelado:
-        st.success(f"Resposta: {c.get('resposta')}")
+        st.success(f"RESPOSTA: {c.get('resposta')}")
 
-with st.expander("🛠️ Logs"):
+with st.expander("🛠️ Ver Logs"):
     st.markdown(f'<div class="log-box">{st.session_state.last_log}</div>', unsafe_allow_html=True)
