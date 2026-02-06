@@ -62,9 +62,9 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA GIGANTE */
+    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 100px !important; /* AUMENTADO PARA 100px E FORÇADO */
+        font-size: 65px;
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
@@ -75,7 +75,7 @@ st.markdown("""
             0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
             0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
         text-align: center;
-        line-height: 1.1;
+        line-height: 1.2;
         letter-spacing: 1px;
     }
     
@@ -110,12 +110,6 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         transition: 0.3s;
         text-transform: uppercase;
-        
-        /* Força o botão a ser menor e centralizado */
-        width: 60% !important; 
-        min-width: 250px !important; /* Tamanho mínimo para não quebrar texto */
-        margin: 0 auto !important; 
-        display: block !important;
     }
     .stButton > button:hover {
         background-position: right center;
@@ -230,7 +224,7 @@ def gerar_carta():
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL ---
+    # --- TELA INICIAL COM NEON MOSTARDA ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
@@ -240,11 +234,12 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    # Botão Centralizado via CSS (sem colunas para evitar bug de largura no mobile)
-    if st.button("✨ GERAR NOVA CARTA"):
-        with st.spinner('Sorteando...'):
-            gerar_carta()
-            st.rerun()
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
+            with st.spinner('Sorteando...'):
+                gerar_carta()
+                st.rerun()
 
 else:
     c = st.session_state.carta
