@@ -3,7 +3,6 @@ import google.generativeai as genai
 import json
 import re
 import traceback
-import time
 
 # --- CONFIGURAÇÃO DE SEGURANÇA ---
 try:
@@ -17,11 +16,12 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (ESTILO VISUAL - IDÊNTICO AO APROVADO) ---
+# --- CSS (ESTILO VISUAL - IDÊNTICO AO SEU PREFERIDO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
 
+    /* Fundo Mágico */
     .stApp {
         background: rgb(40,15,65);
         background: linear-gradient(135deg, rgba(40,15,65,1) 0%, rgba(86,22,86,1) 30%, rgba(186,75,35,1) 65%, rgba(232,183,77,1) 100%);
@@ -33,14 +33,16 @@ st.markdown("""
     #MainMenu, footer, header {visibility: hidden;}
     .main .block-container { padding-top: 2rem; }
 
+    /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
         justify-content: center;
-        color: #F3C623;
+        color: #F3C623; /* Ajustado para o mostarda */
         font-weight: bold;
         margin-top: 10px;
         margin-bottom: 10px;
     }
 
+    /* --- TELA DE BOAS-VINDAS (NEON MOSTARDA) --- */
     .welcome-box {
         text-align: center;
         padding: 10px;
@@ -49,7 +51,7 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        margin: 50px auto -20px auto; 
+        margin: 50px auto -20px auto; /* Ajuste de posição */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -59,10 +61,11 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
+    /* TÍTULO PRINCIPAL - GIGANTE (100px) */
     .main-title {
-        font-size: 100px !important;
+        font-size: 100px !important; 
         font-weight: 800;
-        color: #F3C623;
+        color: #F3C623; 
         margin: 0;
         text-shadow:
             0 0 5px  #F3C623,
@@ -92,6 +95,7 @@ st.markdown("""
         line-height: 1.5;
     }
 
+    /* --- BOTÃO DOURADO --- */
     .stButton > button {
         background: linear-gradient(90deg, #ff9f43, #feca57, #ff9f43);
         background-size: 200% auto;
@@ -117,6 +121,7 @@ st.markdown("""
         background-color: #feca57;
     }
 
+    /* --- ESTILO DAS CARTAS --- */
     .card-theme-box {
         background: #ffffff;
         padding: 20px;
@@ -153,74 +158,51 @@ st.markdown("""
     .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     
     .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
-
-    /* Estilo do Log */
-    .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 10px; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS E LOGS ---
+# --- ESTADOS COM BUFFER ---
 if 'carta' not in st.session_state: st.session_state.carta = None
-if 'reserva' not in st.session_state: st.session_state.reserva = None
+if 'reserva' not in st.session_state: st.session_state.reserva = None # O segredo da velocidade
 if 'revelado' not in st.session_state: st.session_state.revelado = False
-if 'logs' not in st.session_state: st.session_state.logs = []
 
-def registrar_log(msg):
-    timestamp = time.strftime("%H:%M:%S")
-    st.session_state.logs.append(f"[{timestamp}] {msg}")
-
-# --- LÓGICA DE GERAÇÃO (CORRIGIDA) ---
+# --- FUNÇÕES (USANDO A VERSÃO SEGURA QUE FUNCIONA PRA VOCÊ) ---
 def get_model():
-    # Tenta conectar diretamente ao modelo Flash 1.5 (Mais recente e estável)
     try:
-        return genai.GenerativeModel('gemini-1.5-flash')
-    except Exception:
-        # Se der erro local, tenta o Pro
-        return genai.GenerativeModel('gemini-1.5-pro')
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        if any('gemini-1.5-flash' in m for m in models): return genai.GenerativeModel('gemini-1.5-flash')
+        if any('gemini-2.5-flash' in m for m in models): return genai.GenerativeModel('gemini-2.5-flash')
+        return genai.GenerativeModel('gemini-pro')
+    except:
+        return genai.GenerativeModel('gemini-pro')
 
 def obter_dados_carta():
-    registrar_log("Iniciando geração de carta via API...")
-    
-    # 1. Tentativa Principal (Flash)
+    """Gera os dados da carta sem exibir na tela (backend)"""
+    model = get_model()
+    prompt = """
+    Jogo 'Perfil 7'. Gere JSON.
+    1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+    2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
+    3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
+       - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
+       - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
+    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+    """
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = """
-        Jogo 'Perfil 7'. Gere JSON.
-        1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-        2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-        3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
-           - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
-           - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
-        FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
-        """
         response = model.generate_content(prompt)
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
-            registrar_log("Sucesso com Gemini 1.5 Flash!")
             return json.loads(match.group())
-    except Exception as e:
-        registrar_log(f"Erro no Flash: {e}")
-
-    # 2. Tentativa Secundária (Pro) se o Flash falhar
-    registrar_log("Tentando fallback com Gemini 1.5 Pro...")
-    try:
-        model = genai.GenerativeModel('gemini-1.5-pro')
-        response = model.generate_content(prompt) # Usa o mesmo prompt
-        text = response.text.replace("```json", "").replace("```", "").strip()
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            registrar_log("Sucesso com Gemini 1.5 Pro!")
-            return json.loads(match.group())
-    except Exception as e:
-        registrar_log(f"Erro no Pro: {e}")
-        
-    return None
+        else:
+            return None
+    except Exception:
+        return None
 
 # --- INTERFACE ---
 
-# 1. TELA INICIAL
 if not st.session_state.carta:
+    # --- TELA INICIAL ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
@@ -230,22 +212,16 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
+    # Botão Centralizado com Colunas (O jeito que você gostou)
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            registrar_log("Botão Iniciar clicado.")
-            with st.spinner('Inicializando sistema...'):
-                # Primeira carta
-                carta1 = obter_dados_carta()
-                if carta1:
-                    st.session_state.carta = carta1
-                    # Reserva
-                    st.session_state.reserva = obter_dados_carta()
-                    st.rerun()
-                else:
-                    st.error("Falha de conexão com a IA. Tente recarregar a página.")
+            with st.spinner('Inicializando sistema e criando buffer...'):
+                # Gera a atual e a reserva na primeira vez
+                st.session_state.carta = obter_dados_carta()
+                st.session_state.reserva = obter_dados_carta()
+                st.rerun()
 
-# 2. TELA DO JOGO
 else:
     c = st.session_state.carta
     
@@ -277,35 +253,26 @@ else:
     
     st.markdown(tips_html, unsafe_allow_html=True)
     
-    # BOTÃO PROXIMA CARTA
+    # Botão NOVA CARTA com Lógica de Buffer (Instantâneo)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
             if st.session_state.reserva:
-                registrar_log("Usando carta do buffer.")
+                # Usa a reserva imediatamente
                 st.session_state.carta = st.session_state.reserva
-                st.session_state.reserva = None 
+                st.session_state.reserva = None # Esvazia para recarregar depois
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                registrar_log("Buffer vazio! Gerando na hora...")
+                # Se der azar e não tiver reserva, gera na hora
                 with st.spinner("Gerando carta..."):
-                    nova = obter_dados_carta()
-                    if nova:
-                        st.session_state.carta = nova
-                        st.session_state.revelado = False
-                        st.rerun()
-                    else:
-                        st.error("Erro ao gerar carta.")
+                    st.session_state.carta = obter_dados_carta()
+                    st.session_state.revelado = False
+                    st.rerun()
 
-    # RECARGA DE BUFFER
+    # --- RECARGA DE BUFFER EM BACKGROUND ---
+    # Se já temos uma carta na tela, mas não temos reserva, geramos uma agora sem travar a tela
     if st.session_state.carta and st.session_state.reserva is None:
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
-
-# --- PAINEL DE LOGS ---
-st.divider()
-with st.expander("🛠️ Logs (Últimos erros)"):
-    for log_item in st.session_state.logs[-10:]:
-        st.text(log_item)
