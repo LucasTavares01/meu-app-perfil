@@ -3,6 +3,7 @@ import google.generativeai as genai
 import json
 import re
 import traceback
+import time
 
 # --- CONFIGURAÇÃO DE SEGURANÇA ---
 try:
@@ -16,7 +17,7 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (ESTILO VISUAL - IDÊNTICO AO SEU CÓDIGO) ---
+# --- CSS (ESTILO VISUAL - COM FONTE GIGANTE 100px) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -51,13 +52,7 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        
-        /* AQUI ESTÁ O AJUSTE QUE VOCÊ FEZ:
-           50px em cima (para descer da tela)
-           -20px em baixo (para puxar o título para perto) */
-        margin: 50px auto -20px auto;
-        
-        /* Brilho ajustado para o tom mostarda */
+        margin: 50px auto -20px auto; /* Ajuste de posição */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -186,52 +181,58 @@ st.markdown("""
         font-size: 18px; 
         border-radius: 15px;
     }
+    
+    /* ESTILO DO LOG */
+    .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 10px; border-radius: 5px; margin-bottom: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS ---
+# --- ESTADOS E LOGS ---
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
+if 'logs' not in st.session_state: st.session_state.logs = []
 
-# --- FUNÇÕES (CORRIGIDAS PARA API FUNCIONAR) ---
+def registrar_log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{timestamp}] {msg}")
+
+# --- FUNÇÕES COM CORREÇÃO DE API E LOGS ---
 def get_model():
     try:
-        # Tenta listar os modelos disponíveis
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        
-        # Prioriza o modelo Flash 1.5 que é o atual e mais rápido
-        if any('gemini-1.5-flash' in m for m in models): return genai.GenerativeModel('gemini-1.5-flash')
-        if any('gemini-1.5-pro' in m for m in models): return genai.GenerativeModel('gemini-1.5-pro')
-        
-        # Se não achar os novos, tenta o antigo
-        return genai.GenerativeModel('gemini-pro')
-    except:
-        # SE DER ERRO NA LISTAGEM, FORÇA O FLASH (Correção do erro 404)
-        # O código antigo forçava o 'gemini-pro' aqui, o que causava o erro
+        # Tenta conectar diretamente ao modelo Flash 1.5 (Mais recente e estável)
+        registrar_log("Conectando ao modelo Gemini 1.5 Flash...")
         return genai.GenerativeModel('gemini-1.5-flash')
+    except Exception:
+        # Se der erro local, tenta o Pro 1.5
+        registrar_log("Falha no Flash. Tentando Gemini 1.5 Pro...")
+        return genai.GenerativeModel('gemini-1.5-pro')
 
 def gerar_carta():
-    model = get_model()
-    prompt = """
-    Jogo 'Perfil 7'. Gere JSON.
-    1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-    2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-    3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
-       - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
-       - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
-    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
-    """
+    registrar_log("Iniciando geração da carta...")
     try:
+        model = get_model()
+        prompt = """
+        Jogo 'Perfil 7'. Gere JSON.
+        1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+        2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
+        3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
+           - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
+           - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
+        FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+        """
         response = model.generate_content(prompt)
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
+            registrar_log("Sucesso! JSON recebido e validado.")
             st.session_state.carta = json.loads(match.group())
             st.session_state.revelado = False
         else:
-            st.error("Erro na IA: Resposta inválida.")
+            registrar_log("ERRO: A IA respondeu, mas não veio o JSON esperado.")
+            st.error("Erro na IA: Formato inválido.")
     except Exception as e:
-        st.error(f"Erro de conexão com a IA: {e}")
+        registrar_log(f"ERRO CRÍTICO NA API: {e}")
+        st.error(f"Erro de conexão: {e}")
 
 # --- INTERFACE ---
 
@@ -250,6 +251,7 @@ if not st.session_state.carta:
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
+            registrar_log("Botão clicado.")
             with st.spinner('Sorteando...'):
                 gerar_carta()
                 st.rerun()
@@ -288,5 +290,15 @@ else:
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
+            registrar_log("Botão Nova Carta clicado.")
             st.session_state.carta = None
             st.rerun()
+
+# --- PAINEL DE LOGS (DEBUG) ---
+st.divider()
+with st.expander("🛠️ Logs do Sistema (Debug)"):
+    # Mostra os últimos 10 logs
+    if not st.session_state.logs:
+        st.text("Nenhum log registrado ainda.")
+    for log_item in st.session_state.logs[-10:]:
+        st.markdown(f"<div class='log-text'>{log_item}</div>", unsafe_allow_html=True)
