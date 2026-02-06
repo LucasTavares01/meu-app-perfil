@@ -17,7 +17,7 @@ except Exception:
     st.error("ERRO: Configure sua chave 'GROQ_API_KEY' no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (ESTILO VISUAL - MANTIDO EXATAMENTE IGUAL) ---
+# --- CSS (MANTIDO IDÊNTICO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -154,42 +154,54 @@ def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
-# --- LÓGICA DE GERAÇÃO (TURBO) ---
+# --- LÓGICA DE GERAÇÃO (TURBO PERFIL) ---
 def obter_dados_carta():
-    registrar_log("Iniciando requisição Groq (Modo Criativo)...")
+    registrar_log("Gerando carta nível Perfil Pro...")
     
-    # AQUI ESTÁ A MÁGICA PARA MELHORAR AS PALAVRAS
+    # PROMPT DE MESTRE DE TRIVIA
     prompt = """
-    Você é um Mestre de Jogos de Trivia (Perfil).
-    Sua missão é gerar uma carta desafiadora e interessante para adultos.
+    Você é o criador oficial do jogo de tabuleiro 'Perfil'.
+    Sua missão: Criar uma carta de adivinhação inteligente, curiosa e difícil.
     
-    DIRETRIZES DE CONTEÚDO (CRUCIAL):
-    1. EVITE O ÓBVIO: Nunca use palavras simples do dia a dia como "Casa", "Televisão", "Cama", "Cachorro", "Praia".
-    2. SEJA ESPECÍFICO:
-       - Se for LUGAR: Use "Coliseu", "Machu Picchu", "Chernobyl", "Triângulo das Bermudas".
-       - Se for PESSOA: Use "Napoleão Bonaparte", "Frida Kahlo", "Darth Vader", "Pelé".
-       - Se for COISA: Use "Máquina do Tempo", "Monalisa", "Bitcoin", "Pedra de Roseta".
-       - Se for ANO: Use datas históricas impactantes (ex: 1969, 1500, 2001).
-    3. DIFICULDADE: As primeiras dicas devem ser vagas e difíceis. As últimas devem entregar a resposta.
+    PASSO 1: Escolha um TEMA e uma RESPOSTA (Evite coisas óbvias como 'Cadeira' ou 'Cachorro'. Prefira 'Trono de Ferro', 'Ornitorrinco', 'Muralha da China').
 
-    ESTRUTURA OBRIGATÓRIA:
-    - 20 Dicas no total.
-    - 30% de chance de ter 1 item 'PERCA A VEZ' (Máximo 1).
-    - 30% de chance de ter 1 item 'UM PALPITE A QUALQUER HORA' (Máximo 1).
+    PASSO 2: Gere 20 dicas seguindo ESTRITAMENTE estas regras de estilo:
     
-    Retorne APENAS o JSON válido.
-    FORMATO JSON: {"tema": "CATEGORIA", "dicas": ["1. Dica difícil...", "2. Dica...", ...], "resposta": "RESPOSTA ESPECÍFICA"}
+    PROIBIDO (Dicas Ruins):
+    - "É muito famoso"
+    - "Fica na Europa"
+    - "Muitas pessoas usam"
+    - "Existe há muito tempo"
+    (Isso é genérico e chato. Não use!)
+
+    OBRIGATÓRIO (Dicas Boas - Estilo Perfil):
+    - Use CURIOSIDADES ESPECÍFICAS: "Fui inaugurado pelo imperador Tito em 80 d.C." (Para Coliseu).
+    - Use MATERIAIS/QUÍMICA: "Minha composição inclui mármore travertino e tufo".
+    - Use ETIMOLOGIA: "Meu nome vem do grego para 'aquele que escreve'".
+    - Use ASSOCIAÇÕES INDIRETAS: "Já fui palco de batalhas navais artificiais".
+    
+    PROGRESSÃO DA CARTA:
+    - Dicas 1 a 7: DEVEM SER DIFÍCEIS. Use fatos técnicos, históricos obscuros ou curiosidades numéricas. O jogador não deve acertar aqui.
+    - Dicas 8 a 14: Dicas contextuais. Onde fica, quem usa, para que serve, mas sem entregar o nome.
+    - Dicas 15 a 20: Dicas facilitadoras que definem a resposta.
+
+    REGRAS DE ITENS ESPECIAIS:
+    - 30% de chance de aparecer 1 'PERCA A VEZ' (Máximo 1 na lista).
+    - 30% de chance de aparecer 1 'UM PALPITE A QUALQUER HORA' (Máximo 1 na lista).
+    
+    Responda APENAS o JSON.
+    FORMATO: {"tema": "CATEGORIA", "dicas": ["1. Curiosidade obscura...", "2. Fato técnico...", ...], "resposta": "NOME EXATO"}
     """
     
     try:
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "Você é uma API JSON criativa."},
+                {"role": "system", "content": "Você é um especialista em Trivia e Conhecimentos Gerais. Você odeia dicas genéricas."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.85, # Aumentei um pouco para ter mais criatividade
-            max_tokens=1024,
+            temperature=0.8, # Criatividade alta para buscar fatos curiosos
+            max_tokens=1500,
             top_p=1,
             stream=False,
             response_format={"type": "json_object"}
@@ -200,7 +212,7 @@ def obter_dados_carta():
         try:
             dados = json.loads(content)
             
-            # --- HIGIENIZAÇÃO (Garante que não repete especiais) ---
+            # --- HIGIENIZAÇÃO (Mantida por segurança) ---
             dicas_limpas = []
             tem_perca = False
             tem_palpite = False
@@ -212,27 +224,23 @@ def obter_dados_carta():
                         dicas_limpas.append(dica)
                         tem_perca = True
                     else:
-                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica curiosa sobre {dados['resposta']}")
+                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica extra: Tenho relação com a história de {dados['resposta']}")
                 elif "PALPITE" in d_upper:
                     if not tem_palpite:
                         dicas_limpas.append(dica)
                         tem_palpite = True
                     else:
-                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Fato interessante sobre {dados['resposta']}")
+                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Fato curioso: Sou único no mundo.")
                 else:
                     dicas_limpas.append(dica)
             
             dados['dicas'] = dicas_limpas[:20]
-            
-            registrar_log(f"Carta gerada: {dados['resposta']} ({dados['tema']})")
+            registrar_log(f"Carta criada: {dados['resposta']}")
             return dados
             
         except json.JSONDecodeError:
-            match = re.search(r'\{.*\}', content, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-            else:
-                return None
+            registrar_log("Erro ao processar JSON da IA.")
+            return None
                 
     except Exception as e:
         registrar_log(f"ERRO API: {e}")
@@ -254,7 +262,7 @@ if not st.session_state.carta:
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            registrar_log("Iniciando jogo...")
+            registrar_log("Iniciando...")
             
             if st.session_state.reserva:
                 st.session_state.carta = st.session_state.reserva
@@ -262,13 +270,13 @@ if not st.session_state.carta:
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                with st.spinner('Criando cartas desafiadoras...'):
+                with st.spinner('Pesquisando fatos curiosos e obscuros...'):
                     st.session_state.carta = obter_dados_carta()
                     if st.session_state.carta:
                         st.session_state.reserva = obter_dados_carta()
                         st.rerun()
                     else:
-                        st.error("Erro ao conectar. Veja os logs.")
+                        st.error("Erro ao conectar. Tente novamente.")
 
 else:
     c = st.session_state.carta
@@ -304,17 +312,17 @@ else:
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            registrar_log("Voltando para o início...")
+            registrar_log("Voltando...")
             st.session_state.carta = None
             st.rerun()
 
     # Recarga em background
     if st.session_state.carta and st.session_state.reserva is None:
-        registrar_log("Gerando próxima carta no background...")
+        registrar_log("Criando próxima carta desafiadora...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
-            registrar_log("Próxima carta pronta!")
+            registrar_log("Próxima pronta!")
 
 # --- PAINEL DE LOGS ---
 st.divider()
