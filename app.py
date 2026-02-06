@@ -19,8 +19,7 @@ except Exception:
 # --- CSS (ESTILO VISUAL) ---
 st.markdown("""
     <style>
-    /* Importando fontes: Montserrat (textos) e Kaushan Script (título neon estilo referência) */
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&family=Kaushan+Script&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
 
     /* Fundo Mágico */
     .stApp {
@@ -32,7 +31,7 @@ st.markdown("""
     }
 
     #MainMenu, footer, header {visibility: hidden;}
-    .main .block-container { padding-top: 1rem; }
+    .main .block-container { padding-top: 2rem; }
 
     /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
@@ -43,49 +42,23 @@ st.markdown("""
         margin-bottom: 10px;
     }
 
-    /* --- TELA DE BOAS-VINDAS (REFEITA IGUAL REFERÊNCIA) --- */
+    /* --- TELA DE BOAS-VINDAS --- */
     .welcome-box {
         text-align: center;
-        padding: 10px;
+        padding: 20px;
         margin-bottom: 20px;
-        position: relative;
-        /* Garante que o conteúdo fique centralizado */
         display: flex;
         flex-direction: column;
         align-items: center;
     }
     
-    /* TÍTULO NEON (Fica atrás) */
-    .main-title {
-        font-family: 'Kaushan Script', cursive;
-        font-size: 130px; /* Tamanho gigante */
-        color: #ffffff; /* Núcleo branco */
-        margin: 0;
-        padding-top: 40px;
-        position: relative;
-        z-index: 1; /* Camada de trás */
-        /* Aura neon intensa e difusa (amarelo/laranja) */
-        text-shadow:
-            0 0 10px #FFF,
-            0 0 30px #FFD700,
-            0 0 60px #FFD700,
-            0 0 100px #FFD700,
-            0 0 150px #FFA500;
-        text-align: center;
-        line-height: 0.8;
-        transform: rotate(-3deg);
-    }
-    
-    /* DADO DOURADO (Fica na frente) */
+    /* DADO DOURADO (Topo) */
     .golden-dice-icon {
-        width: 160px;
+        width: 140px; /* Tamanho bom */
         display: block;
-        /* Sombra para destacar do neon */
-        filter: drop-shadow(0 5px 15px rgba(0,0,0,0.5));
+        margin-bottom: 10px;
+        filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.6));
         animation: floater 3s ease-in-out infinite;
-        position: relative;
-        z-index: 2; /* Camada da frente */
-        margin-top: -90px; /* Puxa para cima para sobrepor o texto */
     }
     @keyframes floater {
         0% { transform: translateY(0px); }
@@ -93,45 +66,59 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
+    /* TÍTULO PERFIL 7 - ESTILO NEON (Embaixo do dado) */
+    .main-title {
+        font-family: 'Montserrat', sans-serif;
+        font-size: 70px;
+        font-weight: 800;
+        color: #FFD700; /* Dourado */
+        margin: 0;
+        /* Efeito Neon/Glow Aura */
+        text-shadow: 
+            0 0 10px rgba(255, 215, 0, 0.8),
+            0 0 20px rgba(255, 165, 0, 0.6),
+            0 0 40px rgba(255, 69, 0, 0.4);
+        text-align: center;
+        line-height: 1.1;
+        letter-spacing: 1px;
+    }
+    
     .subtitle {
-        font-size: 24px;
+        font-size: 28px;
         font-weight: 400;
         color: #ffffff;
-        margin-top: 20px;
-        margin-bottom: 20px;
-        text-shadow: 0 2px 5px rgba(0,0,0,0.8);
+        margin-top: 5px;
+        margin-bottom: 30px;
+        text-shadow: 0 2px 5px rgba(0,0,0,0.5);
         text-align: center;
     }
 
-    /* --- BOTÃO DOURADO (CENTRALIZADO E TAMANHO AUTOMÁTICO) --- */
-    /* CSS específico para o botão da tela inicial ficar centralizado e com largura do texto */
-    .welcome-button-container .stButton {
+    /* --- BOTÃO DOURADO (Tela Inicial) --- */
+    /* Centralização forçada do container do botão */
+    div.stButton {
         display: flex;
-        justify-content: center;
+        justify-content: center; 
     }
 
-    .welcome-button-container .stButton > button {
+    .stButton > button {
         background: linear-gradient(90deg, #ff9f43, #feca57, #ff9f43);
         background-size: 200% auto;
         color: #5d2e01;
         font-weight: 800;
         font-size: 18px;
-        /* Largura automática baseada no padding */
-        width: auto !important; 
-        padding: 15px 50px !important;
-        height: auto !important;
+        /* Tamanho pílula (padding controla a largura baseada no texto) */
+        padding: 15px 40px; 
         border-radius: 50px !important;
-        border: 3px solid #fff200;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        border: 2px solid #fff200;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         transition: 0.3s;
         text-transform: uppercase;
-        display: block;
+        margin-top: 10px;
     }
-    
-    .welcome-button-container .stButton > button:hover {
+    .stButton > button:hover {
         background-position: right center;
-        transform: translateY(-3px) scale(1.05);
-        box-shadow: 0 15px 30px rgba(255, 200, 0, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(255, 200, 0, 0.4);
         color: #000;
     }
 
@@ -171,12 +158,9 @@ st.markdown("""
     .special-loss { background-color: #ff7675; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     
-    /* Botões da tela da carta (largura total) */
-    .card-screen-button .stButton > button {
+    /* Botões da tela da carta (Ocupam a largura total da coluna) */
+    div[data-testid="column"] .stButton > button {
         width: 100%;
-        height: 50px;
-        font-weight: bold;
-        font-size: 16px;
     }
 
     .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
@@ -187,7 +171,7 @@ st.markdown("""
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
 
-# --- FUNÇÕES (LÓGICA MANTIDA) ---
+# --- FUNÇÕES ---
 def get_model():
     try:
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -223,27 +207,24 @@ def gerar_carta():
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL ---
+    # --- TELA INICIAL RESTAURADA E AJUSTADA ---
+    # Ordem: Dado -> Título -> Subtitle
     st.markdown("""
         <div class="welcome-box">
+            <img src="https://cdn-icons-png.flaticon.com/512/566/566082.png" class="golden-dice-icon">
             <h1 class="main-title">Perfil 7</h1>
-            <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
             <div class="subtitle">Bem-vindo!</div>
         </div>
     """, unsafe_allow_html=True)
     
-    # Botão Centralizado com largura automática (ajustado ao texto)
-    # Usamos um container para aplicar o CSS específico
-    with st.container():
-        st.markdown('<div class="welcome-button-container">', unsafe_allow_html=True)
-        if st.button("✨ GERAR NOVA CARTA"):
-            with st.spinner('Sorteando...'):
-                gerar_carta()
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
+    # Botão Centralizado (Sem use_container_width para respeitar o tamanho do texto)
+    if st.button("✨ GERAR NOVA CARTA"):
+        with st.spinner('Sorteando...'):
+            gerar_carta()
+            st.rerun()
 
 else:
-    # --- TELA DA CARTA (MANTIDA PERFEITA) ---
+    # --- TELA DA CARTA (INTACTA) ---
     c = st.session_state.carta
     
     st.markdown(f"""
@@ -253,11 +234,10 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    # Botão Revelar (Largura total, estilo padrão dos cards)
-    st.markdown('<div class="card-screen-button">', unsafe_allow_html=True)
-    if st.button("👁️ REVELAR RESPOSTA"): 
-        st.session_state.revelado = True
-    st.markdown('</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        if st.button("👁️ REVELAR RESPOSTA", use_container_width=True): 
+            st.session_state.revelado = True
 
     if st.session_state.revelado:
         st.success(f"🏆 {c.get('resposta')}")
@@ -275,9 +255,8 @@ else:
     
     st.markdown(tips_html, unsafe_allow_html=True)
     
-    # Botão Nova Carta (Largura total)
-    st.markdown('<div class="card-screen-button">', unsafe_allow_html=True)
-    if st.button("🔄 NOVA CARTA"):
-        st.session_state.carta = None
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        if st.button("🔄 NOVA CARTA", use_container_width=True):
+            st.session_state.carta = None
+            st.rerun()
