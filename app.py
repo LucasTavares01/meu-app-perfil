@@ -36,90 +36,91 @@ st.markdown("""
     /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
         justify-content: center;
-        color: #F3C623;
+        color: #F3C623; /* Ajustado para o mostarda */
         font-weight: bold;
         margin-top: 10px;
         margin-bottom: 10px;
     }
 
-    /* --- TELA DE BOAS-VINDAS --- */
+    /* --- TELA DE BOAS-VINDAS (NEON MOSTARDA) --- */
     .welcome-box {
         text-align: center;
-        padding: 20px;
-        margin-bottom: 20px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
+        padding: 10px;
+        margin-bottom: 30px;
     }
-    
-    /* DADO DOURADO (Topo) */
     .golden-dice-icon {
-        width: 140px; /* Tamanho bom */
+        width: 140px;
         display: block;
-        margin-bottom: 10px;
-        filter: drop-shadow(0 0 20px rgba(255, 215, 0, 0.6));
+        margin: 0 auto 25px auto;
+        /* Brilho ajustado para o tom mostarda */
+        filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
     @keyframes floater {
         0% { transform: translateY(0px); }
-        50% { transform: translateY(-10px); }
+        50% { transform: translateY(-12px); }
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PERFIL 7 - ESTILO NEON (Embaixo do dado) */
+    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-family: 'Montserrat', sans-serif;
-        font-size: 70px;
+        font-size: 65px;
         font-weight: 800;
-        color: #FFD700; /* Dourado */
+        color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
-        /* Efeito Neon/Glow Aura */
-        text-shadow: 
-            0 0 10px rgba(255, 215, 0, 0.8),
-            0 0 20px rgba(255, 165, 0, 0.6),
-            0 0 40px rgba(255, 69, 0, 0.4);
+        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
+        text-shadow:
+            0 0 5px  #F3C623,  /* Brilho interno */
+            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
+            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
+            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
         text-align: center;
-        line-height: 1.1;
+        line-height: 1.2;
         letter-spacing: 1px;
     }
     
     .subtitle {
-        font-size: 28px;
+        font-size: 28px; /* Levemente reduzido para bater com a referência */
         font-weight: 400;
         color: #ffffff;
-        margin-top: 5px;
+        margin-top: 10px;
         margin-bottom: 30px;
         text-shadow: 0 2px 5px rgba(0,0,0,0.5);
         text-align: center;
     }
-
-    /* --- BOTÃO DOURADO (Tela Inicial) --- */
-    /* Centralização forçada do container do botão */
-    div.stButton {
-        display: flex;
-        justify-content: center; 
+    
+    .description {
+        font-size: 16px;
+        color: #e0e0e0;
+        max-width: 400px;
+        margin: 0 auto;
+        line-height: 1.5;
     }
 
+    /* --- BOTÃO DOURADO --- */
     .stButton > button {
         background: linear-gradient(90deg, #ff9f43, #feca57, #ff9f43);
         background-size: 200% auto;
         color: #5d2e01;
         font-weight: 800;
         font-size: 18px;
-        /* Tamanho pílula (padding controla a largura baseada no texto) */
-        padding: 15px 40px; 
+        height: 55px;
         border-radius: 50px !important;
-        border: 2px solid #fff200;
+        border: 3px solid #fff200;
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         transition: 0.3s;
         text-transform: uppercase;
-        margin-top: 10px;
     }
     .stButton > button:hover {
         background-position: right center;
         transform: translateY(-2px);
         box-shadow: 0 10px 25px rgba(255, 200, 0, 0.4);
         color: #000;
+    }
+    .stButton > button:active {
+        color: #5d2e01;
+        border-color: #fff200;
+        background-color: #feca57;
     }
 
     /* --- ESTILO DAS CARTAS (MANTIDO PERFEITO) --- */
@@ -155,15 +156,31 @@ st.markdown("""
         line-height: 1.4;
     }
     
-    .special-loss { background-color: #ff7675; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    
-    /* Botões da tela da carta (Ocupam a largura total da coluna) */
-    div[data-testid="column"] .stButton > button {
-        width: 100%;
+    .special-loss { 
+        background-color: #ff7675; 
+        color: white !important; 
+        padding: 12px; 
+        border-radius: 8px; 
+        border: none; 
+        text-align: center; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
     }
-
-    .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
+    .special-guess { 
+        background-color: #2ed573; 
+        color: white !important; 
+        padding: 12px; 
+        border-radius: 8px; 
+        border: none; 
+        text-align: center; 
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+    }
+    
+    .stSuccess { 
+        text-align: center; 
+        font-weight: bold; 
+        font-size: 18px; 
+        border-radius: 15px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -207,24 +224,24 @@ def gerar_carta():
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL RESTAURADA E AJUSTADA ---
-    # Ordem: Dado -> Título -> Subtitle
+    # --- TELA INICIAL COM NEON MOSTARDA ---
     st.markdown("""
         <div class="welcome-box">
-            <img src="https://cdn-icons-png.flaticon.com/512/566/566082.png" class="golden-dice-icon">
+            <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
             <h1 class="main-title">Perfil 7</h1>
             <div class="subtitle">Bem-vindo!</div>
+            <div class="description">Clique abaixo para gerar uma nova carta com Inteligência Artificial.</div>
         </div>
     """, unsafe_allow_html=True)
     
-    # Botão Centralizado (Sem use_container_width para respeitar o tamanho do texto)
-    if st.button("✨ GERAR NOVA CARTA"):
-        with st.spinner('Sorteando...'):
-            gerar_carta()
-            st.rerun()
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
+            with st.spinner('Sorteando...'):
+                gerar_carta()
+                st.rerun()
 
 else:
-    # --- TELA DA CARTA (INTACTA) ---
     c = st.session_state.carta
     
     st.markdown(f"""
