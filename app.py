@@ -3,6 +3,7 @@ import google.generativeai as genai
 import json
 import re
 import traceback
+import time
 
 # --- CONFIGURAÇÃO DE SEGURANÇA ---
 try:
@@ -48,7 +49,7 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        margin: 50px auto -20px auto; /* Mantido o ajuste de posição */
+        margin: 50px auto -20px auto; 
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -152,26 +153,37 @@ st.markdown("""
     .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     
     .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
+
+    /* Estilo do Log */
+    .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 10px; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS (AGORA COM RESERVA) ---
+# --- ESTADOS E LOGS ---
 if 'carta' not in st.session_state: st.session_state.carta = None
-if 'reserva' not in st.session_state: st.session_state.reserva = None # Carta buffer
+if 'reserva' not in st.session_state: st.session_state.reserva = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
+if 'logs' not in st.session_state: st.session_state.logs = []
 
-# --- LÓGICA DE GERAÇÃO (SEPARADA DA TELA) ---
+def registrar_log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{timestamp}] {msg}")
+
+# --- LÓGICA DE GERAÇÃO (ROBUSTA) ---
 def get_model():
     try:
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        if any('gemini-1.5-flash' in m for m in models): return genai.GenerativeModel('gemini-1.5-flash')
-        if any('gemini-2.5-flash' in m for m in models): return genai.GenerativeModel('gemini-2.5-flash')
+        if any('gemini-1.5-flash' in m for m in models): 
+            registrar_log("Modelo selecionado: Flash 1.5")
+            return genai.GenerativeModel('gemini-1.5-flash')
+        registrar_log("Modelo selecionado: Pro (Fallback)")
         return genai.GenerativeModel('gemini-pro')
-    except:
+    except Exception as e:
+        registrar_log(f"Erro ao selecionar modelo: {e}")
         return genai.GenerativeModel('gemini-pro')
 
 def obter_dados_carta():
-    """Gera apenas os dados da carta, sem jogar na tela."""
+    registrar_log("Iniciando geração de carta via API...")
     model = get_model()
     prompt = """
     Jogo 'Perfil 7'. Gere JSON.
@@ -187,15 +199,19 @@ def obter_dados_carta():
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
+            registrar_log("Carta gerada e JSON parseado com sucesso.")
             return json.loads(match.group())
         else:
+            registrar_log("ERRO: IA não retornou JSON válido.")
+            registrar_log(f"Resposta crua: {text[:100]}...") # Mostra o começo da resposta
             return None
-    except Exception:
+    except Exception as e:
+        registrar_log(f"ERRO CRÍTICO NA API: {e}")
         return None
 
 # --- INTERFACE ---
 
-# 1. TELA INICIAL (SEM CARTA ATUAL)
+# 1. TELA INICIAL
 if not st.session_state.carta:
     st.markdown("""
         <div class="welcome-box">
@@ -209,13 +225,20 @@ if not st.session_state.carta:
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            with st.spinner('Inicializando sistema e criando buffer... (A primeira vez demora um pouco mais)'):
-                # Primeira vez: Gera a atual E a reserva
-                st.session_state.carta = obter_dados_carta()
-                st.session_state.reserva = obter_dados_carta()
-                st.rerun()
+            registrar_log("Botão Iniciar clicado.")
+            with st.spinner('Inicializando sistema...'):
+                # Tenta gerar a primeira carta
+                carta1 = obter_dados_carta()
+                if carta1:
+                    st.session_state.carta = carta1
+                    # Tenta gerar a reserva (sem travar se falhar)
+                    registrar_log("Gerando carta reserva...")
+                    st.session_state.reserva = obter_dados_carta()
+                    st.rerun()
+                else:
+                    st.error("Falha ao gerar carta. Verifique os logs abaixo.")
 
-# 2. TELA DO JOGO (COM CARTA)
+# 2. TELA DO JOGO
 else:
     c = st.session_state.carta
     
@@ -247,31 +270,41 @@ else:
     
     st.markdown(tips_html, unsafe_allow_html=True)
     
-    # BOTÃO PROXIMA CARTA (USA O BUFFER)
+    # BOTÃO PROXIMA CARTA (BUFFER)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
+            registrar_log("Solicitando nova carta...")
             if st.session_state.reserva:
-                # Pega a carta do buffer instantaneamente
+                registrar_log("Usando carta do buffer (Instantâneo).")
                 st.session_state.carta = st.session_state.reserva
-                st.session_state.reserva = None # Esvazia o buffer para forçar recarga
+                st.session_state.reserva = None 
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                # Caso de emergência se o buffer falhou
-                with st.spinner("Gerando carta de emergência..."):
-                    st.session_state.carta = obter_dados_carta()
-                    st.session_state.revelado = False
-                    st.rerun()
+                registrar_log("Buffer vazio! Gerando carta na hora...")
+                with st.spinner("Gerando carta..."):
+                    nova = obter_dados_carta()
+                    if nova:
+                        st.session_state.carta = nova
+                        st.session_state.revelado = False
+                        st.rerun()
+                    else:
+                        st.error("Erro ao gerar carta.")
 
-    # --- RECARGA DE BUFFER EM BACKGROUND ---
-    # Isso roda DEPOIS que a tela foi desenhada. O usuário já está vendo a carta nova.
-    # Enquanto ele lê o tema, a gente gera a próxima carta reserva.
+    # RECARGA DE BUFFER (SILENCIOSA)
     if st.session_state.carta and st.session_state.reserva is None:
-        # Spinner pequeno discreto na parte inferior ou apenas execução
-        # Se quiser esconder o spinner, remova o "with st.spinner"
-        with st.spinner(" 🎲 Preparando a próxima carta nos bastidores... Pode jogar!"):
-            nova_reserva = obter_dados_carta()
-            if nova_reserva:
-                st.session_state.reserva = nova_reserva
-                # Apenas salvamos no estado, não damos rerun para não piscar a tela
+        registrar_log("Buffer vazio. Iniciando recarga em background...")
+        nova_reserva = obter_dados_carta()
+        if nova_reserva:
+            st.session_state.reserva = nova_reserva
+            registrar_log("Buffer recarregado com sucesso!")
+        else:
+            registrar_log("Falha ao recarregar buffer.")
+
+# --- PAINEL DE LOGS (DEBUG) ---
+st.divider()
+with st.expander("🛠️ Logs do Sistema (Debug)"):
+    # Mostra os últimos 10 logs
+    for log_item in st.session_state.logs[-10:]:
+        st.text(log_item)
