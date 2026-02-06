@@ -64,7 +64,7 @@ st.markdown("""
     
     /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 95px; /* AUMENTADO DE 65px PARA 95px */
+        font-size: 200px; /* AUMENTADO DE 65px PARA 95px */
         font-weight: 800;
         color: #F3C623;
         margin: 0;
