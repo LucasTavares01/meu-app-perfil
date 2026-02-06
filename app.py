@@ -51,8 +51,12 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        /* AQUI ESTÁ A MUDANÇA: Adicionei 50px no topo para ele descer */
-        margin: 50px auto 25px auto; 
+        
+        /* AQUI ESTÁ O AJUSTE:
+           50px em cima (para descer da tela)
+           -20px em baixo (para puxar o título para perto) */
+        margin: 50px auto -20px auto;
+        
         /* Brilho ajustado para o tom mostarda */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
@@ -65,7 +69,7 @@ st.markdown("""
     
     /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 100px !important; /* MANTIDO GIGANTE COMO PEDIU */
+        font-size: 100px !important; 
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
