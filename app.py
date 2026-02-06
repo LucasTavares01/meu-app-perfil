@@ -3,6 +3,7 @@ import google.generativeai as genai
 import json
 import re
 import traceback
+import time
 
 # --- CONFIGURAÇÃO DE SEGURANÇA ---
 try:
@@ -21,7 +22,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
 
-    /* Fundo Mágico */
     .stApp {
         background: rgb(40,15,65);
         background: linear-gradient(135deg, rgba(40,15,65,1) 0%, rgba(86,22,86,1) 30%, rgba(186,75,35,1) 65%, rgba(232,183,77,1) 100%);
@@ -33,16 +33,14 @@ st.markdown("""
     #MainMenu, footer, header {visibility: hidden;}
     .main .block-container { padding-top: 2rem; }
 
-    /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
         justify-content: center;
-        color: #F3C623; /* Ajustado para o mostarda */
+        color: #F3C623;
         font-weight: bold;
         margin-top: 10px;
         margin-bottom: 10px;
     }
 
-    /* --- TELA DE BOAS-VINDAS (NEON MOSTARDA) --- */
     .welcome-box {
         text-align: center;
         padding: 10px;
@@ -51,13 +49,7 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        
-        /* AQUI ESTÁ O AJUSTE:
-           50px em cima (para descer da tela)
-           -20px em baixo (para puxar o título para perto) */
-        margin: 50px auto -20px auto;
-        
-        /* Brilho ajustado para o tom mostarda */
+        margin: 50px auto -20px auto; 
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -67,25 +59,23 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 100px !important; 
+        font-size: 100px !important;
         font-weight: 800;
-        color: #F3C623; /* Amarelo Mostarda Vibrante */
+        color: #F3C623;
         margin: 0;
-        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
         text-shadow:
-            0 0 5px  #F3C623,  /* Brilho interno */
-            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
-            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
-            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
+            0 0 5px  #F3C623,
+            0 0 20px rgba(243, 198, 35, 0.8),
+            0 0 40px rgba(243, 198, 35, 0.6),
+            0 0 60px rgba(243, 198, 35, 0.4);
         text-align: center;
         line-height: 1.1;
         letter-spacing: 1px;
     }
     
     .subtitle {
-        font-size: 28px; /* Levemente reduzido para bater com a referência */
+        font-size: 28px;
         font-weight: 400;
         color: #ffffff;
         margin-top: 10px;
@@ -102,7 +92,6 @@ st.markdown("""
         line-height: 1.5;
     }
 
-    /* --- BOTÃO DOURADO --- */
     .stButton > button {
         background: linear-gradient(90deg, #ff9f43, #feca57, #ff9f43);
         background-size: 200% auto;
@@ -128,7 +117,6 @@ st.markdown("""
         background-color: #feca57;
     }
 
-    /* --- ESTILO DAS CARTAS (MANTIDO PERFEITO) --- */
     .card-theme-box {
         background: #ffffff;
         padding: 20px;
@@ -161,77 +149,76 @@ st.markdown("""
         line-height: 1.4;
     }
     
-    .special-loss { 
-        background-color: #ff7675; 
-        color: white !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        border: none; 
-        text-align: center; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-    }
-    .special-guess { 
-        background-color: #2ed573; 
-        color: white !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        border: none; 
-        text-align: center; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-    }
+    .special-loss { background-color: #ff7675; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     
-    .stSuccess { 
-        text-align: center; 
-        font-weight: bold; 
-        font-size: 18px; 
-        border-radius: 15px;
-    }
+    .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
+    
+    .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 10px; border-radius: 5px; margin-bottom: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS (Adicionado 'reserva' para o buffer) ---
+# --- ESTADOS E LOGS ---
 if 'carta' not in st.session_state: st.session_state.carta = None
-if 'reserva' not in st.session_state: st.session_state.reserva = None
+if 'reserva' not in st.session_state: st.session_state.reserva = None # O "estoque"
 if 'revelado' not in st.session_state: st.session_state.revelado = False
+if 'logs' not in st.session_state: st.session_state.logs = []
 
-# --- FUNÇÕES ---
+def registrar_log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{timestamp}] {msg}")
+
+# --- LÓGICA DE GERAÇÃO (Blindada contra Cotas) ---
 def get_model():
-    # Mantendo a sua lógica exata que funciona
     try:
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        if any('gemini-1.5-flash' in m for m in models): return genai.GenerativeModel('gemini-1.5-flash')
-        if any('gemini-2.5-flash' in m for m in models): return genai.GenerativeModel('gemini-2.5-flash')
-        return genai.GenerativeModel('gemini-pro')
+        # Prioriza modelos com cotas maiores e estáveis
+        # 1. Flash 1.5 (Melhor custo/benefício)
+        # 2. Pro 1.5 (Fallback robusto)
+        # Ignoramos o 2.5 e 2.0 por enquanto pois dão erro 429 fácil
+        return genai.GenerativeModel('gemini-1.5-flash')
     except:
-        return genai.GenerativeModel('gemini-pro')
+        return genai.GenerativeModel('gemini-1.5-pro')
 
 def obter_dados_carta():
-    """Gera os dados da carta mas NÃO joga na tela. Retorna o JSON."""
-    model = get_model()
-    prompt = """
-    Jogo 'Perfil 7'. Gere JSON.
-    1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-    2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-    3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
-       - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
-       - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
-    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
-    """
+    """Gera carta e retorna JSON (não altera state diretamente)"""
+    registrar_log("--- Iniciando Geração (API) ---")
     try:
-        response = model.generate_content(prompt)
+        model = get_model()
+        prompt = """
+        Jogo 'Perfil 7'. Gere JSON.
+        1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+        2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
+        3. REGRAS:
+           - 30% chance 'PERCA A VEZ'.
+           - 30% chance 'UM PALPITE A QUALQUER HORA'.
+        FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+        """
+        # Tentativa com Fallback simples
+        try:
+            response = model.generate_content(prompt)
+        except Exception as e:
+            registrar_log(f"Erro no Flash, tentando Pro: {e}")
+            model = genai.GenerativeModel('gemini-1.5-pro')
+            response = model.generate_content(prompt)
+
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
+        
         if match:
+            registrar_log("JSON validado com sucesso!")
             return json.loads(match.group())
         else:
+            registrar_log("Erro de JSON.")
             return None
-    except Exception:
+            
+    except Exception as e:
+        registrar_log(f"ERRO API: {e}")
         return None
 
 # --- INTERFACE ---
 
+# CENÁRIO 1: TELA INICIAL
 if not st.session_state.carta:
-    # --- TELA INICIAL ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
@@ -241,20 +228,33 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    # Mantendo a estrutura de colunas que deixa o botão centralizado e do tamanho certo
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            with st.spinner('Inicializando e criando estoque de cartas...'):
-                # GERA DUAS CARTAS NA PRIMEIRA VEZ (A atual e a reserva)
-                st.session_state.carta = obter_dados_carta()
-                st.session_state.reserva = obter_dados_carta()
-                
-                if st.session_state.carta: # Se deu certo pelo menos uma
-                    st.rerun()
-                else:
-                    st.error("Erro ao conectar com a IA. Tente novamente.")
+            registrar_log("Botão Iniciar Clicado.")
+            
+            # LÓGICA DE FLUXO DA TELA INICIAL
+            if st.session_state.reserva:
+                # 4. Se já tem reserva, abre na hora (instantâneo)
+                registrar_log("Usando carta da reserva (Instantâneo).")
+                st.session_state.carta = st.session_state.reserva
+                st.session_state.reserva = None # Esvazia a reserva para forçar recarga no background
+                st.session_state.revelado = False
+                st.rerun()
+            else:
+                # 1. Primeira vez (ou sem reserva): Gera as duas
+                with st.spinner('Criando baralho inicial (gerando 2 cartas)...'):
+                    c1 = obter_dados_carta() # Carta atual
+                    if c1:
+                        st.session_state.carta = c1
+                        st.session_state.revelado = False
+                        # Gera a reserva logo em seguida
+                        st.session_state.reserva = obter_dados_carta()
+                        st.rerun()
+                    else:
+                        st.error("Erro ao conectar com a IA. Verifique os logs.")
 
+# CENÁRIO 2: TELA DA CARTA
 else:
     c = st.session_state.carta
     
@@ -286,27 +286,31 @@ else:
     
     st.markdown(tips_html, unsafe_allow_html=True)
     
+    # BOTÃO "NOVA CARTA" (AGORA APENAS VOLTA PARA O INÍCIO)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
-        # BOTÃO COM LÓGICA DE BUFFER
+        # 3. Retorna à tela principal
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            if st.session_state.reserva:
-                # Usa a carta que já estava pronta (INSTANTÂNEO)
-                st.session_state.carta = st.session_state.reserva
-                st.session_state.reserva = None # Esvazia a reserva para forçar recarga
-                st.session_state.revelado = False
-                st.rerun()
-            else:
-                # Se não tiver reserva (ex: erro de conexão no background), gera na hora
-                with st.spinner("Gerando carta..."):
-                    st.session_state.carta = obter_dados_carta()
-                    st.session_state.revelado = False
-                    st.rerun()
+            registrar_log("Voltando para a tela inicial...")
+            st.session_state.carta = None
+            st.rerun()
 
-    # --- RECARGA DE BUFFER EM BACKGROUND ---
-    # Isso roda silenciosamente DEPOIS de mostrar a carta atual.
-    # Assim, enquanto você joga, a próxima carta está sendo criada.
+    # --- REPOSIÇÃO DE ESTOQUE (BACKGROUND) ---
+    # Isso roda DEPOIS de mostrar a carta atual.
+    # Enquanto você lê as dicas, ele verifica se tem reserva. Se não tiver, gera uma.
     if st.session_state.carta and st.session_state.reserva is None:
+        # Não usamos spinner aqui para não travar a leitura, ou usamos um bem discreto se preferir
+        # O ideal é deixar rodar. O Streamlit vai mostrar o "running" no topo direito.
+        registrar_log("Repondo estoque em background...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
+            registrar_log("Estoque reposto com sucesso!")
+
+# --- PAINEL DE LOGS ---
+st.divider()
+with st.expander("🛠️ Logs do Sistema (Debug)"):
+    if not st.session_state.logs:
+        st.write("Nenhum log registrado ainda.")
+    for log_item in st.session_state.logs:
+        st.markdown(f"<div class='log-text'>{log_item}</div>", unsafe_allow_html=True)
