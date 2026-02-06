@@ -234,7 +234,7 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    c1, c2, c3 = st.columns([1, 2, 1])
+    c1, c2, c3 = st.columns([3, 2, 3]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
             with st.spinner('Sorteando...'):
