@@ -17,7 +17,7 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (ESTILO VISUAL - MANTIDO IDÊNTICO) ---
+# --- CSS (ESTILO VISUAL - IDÊNTICO AO APROVADO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -169,45 +169,53 @@ def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
-# --- LÓGICA DE GERAÇÃO (ROBUSTA) ---
+# --- LÓGICA DE GERAÇÃO (CORRIGIDA) ---
 def get_model():
+    # Tenta conectar diretamente ao modelo Flash 1.5 (Mais recente e estável)
     try:
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        if any('gemini-1.5-flash' in m for m in models): 
-            registrar_log("Modelo selecionado: Flash 1.5")
-            return genai.GenerativeModel('gemini-1.5-flash')
-        registrar_log("Modelo selecionado: Pro (Fallback)")
-        return genai.GenerativeModel('gemini-pro')
-    except Exception as e:
-        registrar_log(f"Erro ao selecionar modelo: {e}")
-        return genai.GenerativeModel('gemini-pro')
+        return genai.GenerativeModel('gemini-1.5-flash')
+    except Exception:
+        # Se der erro local, tenta o Pro
+        return genai.GenerativeModel('gemini-1.5-pro')
 
 def obter_dados_carta():
     registrar_log("Iniciando geração de carta via API...")
-    model = get_model()
-    prompt = """
-    Jogo 'Perfil 7'. Gere JSON.
-    1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-    2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-    3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
-       - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
-       - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
-    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
-    """
+    
+    # 1. Tentativa Principal (Flash)
     try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = """
+        Jogo 'Perfil 7'. Gere JSON.
+        1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+        2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
+        3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
+           - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
+           - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
+        FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+        """
         response = model.generate_content(prompt)
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
-            registrar_log("Carta gerada e JSON parseado com sucesso.")
+            registrar_log("Sucesso com Gemini 1.5 Flash!")
             return json.loads(match.group())
-        else:
-            registrar_log("ERRO: IA não retornou JSON válido.")
-            registrar_log(f"Resposta crua: {text[:100]}...") # Mostra o começo da resposta
-            return None
     except Exception as e:
-        registrar_log(f"ERRO CRÍTICO NA API: {e}")
-        return None
+        registrar_log(f"Erro no Flash: {e}")
+
+    # 2. Tentativa Secundária (Pro) se o Flash falhar
+    registrar_log("Tentando fallback com Gemini 1.5 Pro...")
+    try:
+        model = genai.GenerativeModel('gemini-1.5-pro')
+        response = model.generate_content(prompt) # Usa o mesmo prompt
+        text = response.text.replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            registrar_log("Sucesso com Gemini 1.5 Pro!")
+            return json.loads(match.group())
+    except Exception as e:
+        registrar_log(f"Erro no Pro: {e}")
+        
+    return None
 
 # --- INTERFACE ---
 
@@ -227,16 +235,15 @@ if not st.session_state.carta:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
             registrar_log("Botão Iniciar clicado.")
             with st.spinner('Inicializando sistema...'):
-                # Tenta gerar a primeira carta
+                # Primeira carta
                 carta1 = obter_dados_carta()
                 if carta1:
                     st.session_state.carta = carta1
-                    # Tenta gerar a reserva (sem travar se falhar)
-                    registrar_log("Gerando carta reserva...")
+                    # Reserva
                     st.session_state.reserva = obter_dados_carta()
                     st.rerun()
                 else:
-                    st.error("Falha ao gerar carta. Verifique os logs abaixo.")
+                    st.error("Falha de conexão com a IA. Tente recarregar a página.")
 
 # 2. TELA DO JOGO
 else:
@@ -270,19 +277,18 @@ else:
     
     st.markdown(tips_html, unsafe_allow_html=True)
     
-    # BOTÃO PROXIMA CARTA (BUFFER)
+    # BOTÃO PROXIMA CARTA
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            registrar_log("Solicitando nova carta...")
             if st.session_state.reserva:
-                registrar_log("Usando carta do buffer (Instantâneo).")
+                registrar_log("Usando carta do buffer.")
                 st.session_state.carta = st.session_state.reserva
                 st.session_state.reserva = None 
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                registrar_log("Buffer vazio! Gerando carta na hora...")
+                registrar_log("Buffer vazio! Gerando na hora...")
                 with st.spinner("Gerando carta..."):
                     nova = obter_dados_carta()
                     if nova:
@@ -292,19 +298,14 @@ else:
                     else:
                         st.error("Erro ao gerar carta.")
 
-    # RECARGA DE BUFFER (SILENCIOSA)
+    # RECARGA DE BUFFER
     if st.session_state.carta and st.session_state.reserva is None:
-        registrar_log("Buffer vazio. Iniciando recarga em background...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
-            registrar_log("Buffer recarregado com sucesso!")
-        else:
-            registrar_log("Falha ao recarregar buffer.")
 
-# --- PAINEL DE LOGS (DEBUG) ---
+# --- PAINEL DE LOGS ---
 st.divider()
-with st.expander("🛠️ Logs do Sistema (Debug)"):
-    # Mostra os últimos 10 logs
+with st.expander("🛠️ Logs (Últimos erros)"):
     for log_item in st.session_state.logs[-10:]:
         st.text(log_item)
