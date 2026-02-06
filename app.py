@@ -64,18 +64,18 @@ st.markdown("""
     
     /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 65px;
+        font-size: 95px; /* AUMENTADO DE 65px PARA 95px */
         font-weight: 800;
-        color: #F3C623; /* Amarelo Mostarda Vibrante */
+        color: #F3C623;
         margin: 0;
         /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
         text-shadow:
-            0 0 5px  #F3C623,  /* Brilho interno */
-            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
-            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
-            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
+            0 0 5px  #F3C623,
+            0 0 20px rgba(243, 198, 35, 0.8),
+            0 0 40px rgba(243, 198, 35, 0.6),
+            0 0 60px rgba(243, 198, 35, 0.4);
         text-align: center;
-        line-height: 1.2;
+        line-height: 1.1;
         letter-spacing: 1px;
     }
     
