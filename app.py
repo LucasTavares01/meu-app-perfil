@@ -168,220 +168,185 @@ def verificar_similaridade(nova_resposta):
             return True
     return False
 
-def selecionar_dicas_sem_spoiler(todas_dicas, resposta):
-    palavras_proibidas = [p for p in resposta.lower().split() if len(p) > 3]
-    dicas_aprovadas = []
-    
-    for dica in todas_dicas:
-        if len(dicas_aprovadas) >= 20: 
-            break
-            
-        dica_lower = dica.lower()
-        if "PERCA A VEZ" in dica.upper() or "PALPITE" in dica.upper():
-            dicas_aprovadas.append(dica)
-            continue
-            
-        tem_spoiler = False
-        for palavra in palavras_proibidas:
-            if palavra in dica_lower:
-                tem_spoiler = True
-                registrar_log(f"Spoiler removido: {dica[:30]}...")
-                break
-        
-        if not tem_spoiler:
-            dicas_aprovadas.append(dica)
-            
-    while len(dicas_aprovadas) < 20:
-        dicas_aprovadas.append(f"{len(dicas_aprovadas)+1}. Fato adicional verificado sobre este tema.")
-        
-    return dicas_aprovadas
+# --- FUNÇÕES DE GERAÇÃO INTELIGENTE ---
 
-# --- NOVA FUNÇÃO: O AUDITOR DE ANOS ---
-def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
-    """
-    Esta função chama a IA novamente para agir como um auditor chato.
-    Ela deve filtrar impiedosamente qualquer dica que não seja do ano exato.
-    """
-    registrar_log(f"🔍 Iniciando auditoria rigorosa para o ano {ano_alvo}...")
+def gerar_dicas_complementares(resposta, quantidade_necessaria, tema):
+    """Gera dicas EXTRAS quando a auditoria cortou muitas."""
+    registrar_log(f"⚠️ Gerando {quantidade_necessaria} dicas extras para '{resposta}'...")
     
-    prompt_auditoria = f"""
-    Você é um Auditor Histórico Rigoroso.
-    O ano alvo é: {ano_alvo}.
+    prompt_rescue = f"""
+    Estou criando um jogo sobre: {resposta} (Tema: {tema}).
+    Preciso de {quantidade_necessaria} fatos NOVOS e VERDADEIROS sobre isso.
     
-    Abaixo está uma lista de fatos candidatos.
-    Sua missão:
-    1. Verificar se o fato ocorreu EXATAMENTE em {ano_alvo}.
-    2. Se ocorreu em {int(ano_alvo)-1} ou {int(ano_alvo)+1}, REJEITE.
-    3. Se for uma década, REJEITE.
-    4. Se for um fato genérico (matemática, ciência) que não depende do ano, REJEITE.
+    REGRAS RÍGIDAS:
+    1. Se for ANO: Apenas eventos que ocorreram EXATAMENTE neste ano.
+    2. Se for PESSOA/LUGAR: Fatos biográficos ou geográficos precisos.
+    3. NÃO repita fatos genéricos.
+    4. A resposta "{resposta}" NÃO pode aparecer no texto.
     
-    Retorne APENAS um JSON com a lista 'dicas_aprovadas' contendo as strings originais que são 100% verdadeiras.
-    
-    LISTA PARA AUDITAR:
-    {json.dumps(lista_dicas_candidatas)}
+    Retorne JSON: {{"dicas_extras": ["fato 1", "fato 2" ...]}}
     """
     
     try:
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "Você é um verificador de fatos. Você elimina mentiras e imprecisões."},
-                {"role": "user", "content": prompt_auditoria}
-            ],
-            temperature=0.0, # Zero criatividade, apenas lógica
-            max_tokens=2000,
+            messages=[{"role": "user", "content": prompt_rescue}],
+            temperature=0.2,
             response_format={"type": "json_object"}
         )
-        
         content = completion.choices[0].message.content
         dados = json.loads(content)
-        aprovadas = dados.get("dicas_aprovadas", [])
-        
-        registrar_log(f"Auditoria concluída. {len(aprovadas)} dicas sobreviveram de {len(lista_dicas_candidatas)}.")
-        return aprovadas
-        
-    except Exception as e:
-        registrar_log(f"Erro na auditoria: {e}")
-        return [] # Se falhar, retorna vazio para forçar regeneração
+        return dados.get("dicas_extras", [])
+    except:
+        return []
 
-# --- LÓGICA DE GERAÇÃO PRINCIPAL ---
+def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
+    """Auditoria rigorosa para anos"""
+    prompt_auditoria = f"""
+    Você é um Auditor Histórico.
+    Ano alvo: {ano_alvo}.
+    
+    Lista para verificar: {json.dumps(lista_dicas_candidatas)}
+    
+    MISSÃO:
+    Retorne apenas as dicas que são 100% confirmadas para este ano exato.
+    Se for dúvida, elimine.
+    
+    JSON: {{"dicas_aprovadas": ["dica1", "dica2"]}}
+    """
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt_auditoria}],
+            temperature=0.0,
+            response_format={"type": "json_object"}
+        )
+        content = completion.choices[0].message.content
+        dados = json.loads(content)
+        return dados.get("dicas_aprovadas", [])
+    except:
+        return []
+
 def obter_dados_carta():
     tentativas = 0
-    max_tentativas = 3 
-    
-    while tentativas < max_tentativas:
+    while tentativas < 3:
         temas_possiveis = ["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"]
         tema_sorteado = random.choice(temas_possiveis)
-        
-        proibidos_str = ", ".join(st.session_state.used_answers[-20:]) 
+        proibidos_str = ", ".join(st.session_state.used_answers[-20:])
         
         registrar_log(f"Tentativa {tentativas+1}: '{tema_sorteado}'.")
         
-        # DEFINIÇÃO DOS PROMPTS
+        # PROMPTS
         if tema_sorteado == "ANO":
-            # Para ANOS: Pedimos 35 dicas para ter gordura para a auditoria cortar
+            temp_model = 0.1
             prompt_especifico = """
-            DIRETRIZES OBRIGATÓRIAS PARA 'ANO':
-            1. A RESPOSTA deve ser um ANO NUMÉRICO DE 4 DÍGITOS (Ex: 1994, 1822).
-            2. GERE 30 DICAS CANDIDATAS. Preciso de muitas opções.
-            3. Use: Lançamento de filmes, nascimentos/mortes, tratados, invenções, álbuns musicais.
-            4. Tente ser preciso, mas se errar, o auditor cortará depois.
-            """
-        elif tema_sorteado == "PESSOA":
-            prompt_especifico = """
-            DIRETRIZES OBRIGATÓRIAS PARA 'PESSOA':
-            1. FAMA MUNDIAL OBRIGATÓRIA. (Ex: Einstein, Madonna, Cristiano Ronaldo).
-            2. PROIBIDO celebridades locais, apresentadores de TV regionais ou políticos de pouca expressão.
-            3. A pessoa deve ser reconhecida em pelo menos 3 continentes.
-            4. Use fatos biográficos, prêmios, obras e polêmicas.
+            - RESPOSTA: ANO DE 4 DÍGITOS (Ex: 1994).
+            - DICAS: Eventos históricos exatos deste ano. Nada de "década".
+            - GERE 35 DICAS para ter sobra.
             """
         else:
+            temp_model = 0.7
             prompt_especifico = """
-            DIRETRIZES PARA LUGAR/DIGITAL/COISA:
-            - Evite o óbvio.
-            - Se for LUGAR: Turístico global ou capital importante.
-            - Se for DIGITAL: Grandes empresas ou tecnologias revolucionárias.
+            - RESPOSTA: Algo famoso mundialmente.
+            - DICAS: Fatos curiosos, biografia, dados técnicos.
+            - GERE 25 DICAS.
             """
 
         prompt = f"""
-        Você é o criador oficial do jogo 'Perfil'.
-        TAREFA: Criar carta para o tema: "{tema_sorteado}".
+        Jogo 'Perfil'. Tema: {tema_sorteado}.
         {prompt_especifico}
-        
-        REGRAS GERAIS:
-        1. A resposta NÃO PODE aparecer no texto das dicas.
-        2. PROIBIDO REPETIR: {proibidos_str}
-        
-        Retorne APENAS JSON.
-        FORMATO: {{"tema": "{tema_sorteado}", "dicas": ["..."], "resposta": "NOME"}}
+        PROIBIDO REPETIR: {proibidos_str}
+        JSON: {{"tema": "{tema_sorteado}", "dicas": ["..."], "resposta": "NOME"}}
         """
         
         try:
-            # GERAÇÃO INICIAL
+            # 1. GERAÇÃO INICIAL
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3, 
-                max_tokens=2000,
+                temperature=temp_model,
                 response_format={"type": "json_object"}
             )
-            
-            content = completion.choices[0].message.content
-            dados = json.loads(content)
-            
-            dados["tema"] = tema_sorteado
+            dados = json.loads(completion.choices[0].message.content)
             resposta_atual = dados["resposta"]
+            dicas_iniciais = dados.get("dicas", [])
             
-            # Validações Iniciais
+            # Validações
             if verificar_similaridade(resposta_atual):
-                tentativas += 1
-                continue 
+                tentativas += 1; continue
             
             if tema_sorteado == "ANO":
-                apenas_numeros = re.sub("[^0-9]", "", str(resposta_atual))
-                if len(apenas_numeros) != 4:
-                    tentativas += 1
-                    continue
-                dados["resposta"] = apenas_numeros
+                if not re.match(r"^\d{4}$", str(resposta_atual)):
+                    tentativas += 1; continue
                 
-                # --- FASE DE AUDITORIA (SÓ PARA ANOS) ---
-                dicas_auditadas = auditar_dicas_ano(dados["resposta"], dados.get("dicas", []))
-                
-                # Se sobrar menos de 15 dicas verdadeiras, a carta é descartada e gera outra
-                if len(dicas_auditadas) < 15:
-                    registrar_log(f"Carta reprovida na auditoria (Só {len(dicas_auditadas)} dicas válidas). Tentando outro ano...")
-                    tentativas += 1
-                    continue
-                
-                # Atualiza as dicas com as aprovadas pelo auditor
-                dados["dicas"] = dicas_auditadas
+                # AUDITORIA DE ANO
+                dicas_auditadas = auditar_dicas_ano(resposta_atual, dicas_iniciais)
+                dicas_limpas = dicas_auditadas
+            else:
+                dicas_limpas = dicas_iniciais
 
-            st.session_state.used_answers.append(resposta_atual)
+            # REMOÇÃO DE SPOILERS (PYTHON)
+            palavras_proibidas = [p for p in resposta_atual.lower().split() if len(p) > 3]
+            dicas_sem_spoiler = []
+            for d in dicas_limpas:
+                if not any(p in d.lower() for p in palavras_proibidas):
+                    dicas_sem_spoiler.append(d)
+
+            # --- PREENCHIMENTO INTELIGENTE (LOOP DE CORREÇÃO) ---
+            # Se tivermos menos de 20 dicas boas, pedimos mais para a IA
+            ciclos_rescue = 0
+            while len(dicas_sem_spoiler) < 20 and ciclos_rescue < 3:
+                faltam = 22 - len(dicas_sem_spoiler) # Pede um pouco a mais
+                novas_dicas = gerar_dicas_complementares(resposta_atual, faltam, tema_sorteado)
+                
+                # Filtra as novas também
+                for nd in novas_dicas:
+                    if not any(p in nd.lower() for p in palavras_proibidas):
+                        dicas_sem_spoiler.append(nd)
+                
+                ciclos_rescue += 1
             
-            # Formatação Final (Anti-Spoiler + Especiais)
-            dicas_brutas = dados.get('dicas', [])
-            dicas_filtradas = selecionar_dicas_sem_spoiler(dicas_brutas, resposta_atual)
-            
+            # Se mesmo assim não deu 20, descarta a carta e tenta outro tema
+            if len(dicas_sem_spoiler) < 18: 
+                registrar_log("Falha ao completar 20 dicas reais. Tentando outra carta.")
+                tentativas += 1; continue
+
+            # FORMATAÇÃO FINAL (Itens Especiais)
             dicas_finais = []
             tem_perca = False
             tem_palpite = False
             
-            for dica in dicas_filtradas:
-                d_upper = dica.upper()
-                if "PERCA A VEZ" in d_upper:
-                    if not tem_perca:
-                        dicas_finais.append("2. PERCA A VEZ") 
-                        tem_perca = True
-                    else:
-                        dicas_finais.append(f"{len(dicas_finais)+1}. Curiosidade extra sobre {resposta_atual}.")
-                elif "PALPITE" in d_upper:
-                    if not tem_palpite:
-                        dicas_finais.append("6. UM PALPITE A QUALQUER HORA")
-                        tem_palpite = True
-                    else:
-                        dicas_finais.append(f"{len(dicas_finais)+1}. Detalhe histórico sobre {resposta_atual}.")
+            # Pega as primeiras 20 (ou o que tiver)
+            pool_dicas = dicas_sem_spoiler[:22]
+            
+            for i, dica in enumerate(pool_dicas):
+                if len(dicas_finais) >= 20: break
+                
+                # Insere itens especiais nas posições estratégicas (ex: 2 e 12)
+                if i == 1 and not tem_perca: # Posição 2
+                    dicas_finais.append("2. PERCA A VEZ")
+                    tem_perca = True
+                elif i == 11 and not tem_palpite: # Posição 12
+                    dicas_finais.append("12. UM PALPITE A QUALQUER HORA")
+                    tem_palpite = True
                 else:
                     dicas_finais.append(dica)
             
-            # Se a auditoria cortou muita coisa, completamos com genéricas seguras para não quebrar o layout
-            while len(dicas_finais) < 20:
-                 dicas_finais.append(f"{len(dicas_finais)+1}. Este fato é amplamente estudado em história.")
-
+            # Ajuste final de tamanho
             dados['dicas'] = dicas_finais[:20]
-            registrar_log(f"Carta Aprovada: {resposta_atual} ({tema_sorteado})")
+            st.session_state.used_answers.append(resposta_atual)
+            registrar_log(f"CARTA PRONTA: {resposta_atual}")
             return dados
-            
+
         except Exception as e:
-            registrar_log(f"Erro na geração: {e}")
+            registrar_log(f"Erro: {e}")
             tentativas += 1
-            
-    registrar_log("Falha após 3 tentativas.")
+
     return None
 
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
@@ -395,14 +360,13 @@ if not st.session_state.carta:
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
             registrar_log("Iniciando...")
-            
             if st.session_state.reserva:
                 st.session_state.carta = st.session_state.reserva
                 st.session_state.reserva = None 
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                with st.spinner('Pesquisando fatos e auditando datas...'):
+                with st.spinner('Auditando fatos históricos...'):
                     st.session_state.carta = obter_dados_carta()
                     if st.session_state.carta:
                         st.session_state.reserva = obter_dados_carta()
@@ -412,7 +376,6 @@ if not st.session_state.carta:
 
 else:
     c = st.session_state.carta
-    
     st.markdown(f"""
     <div class="card-theme-box">
         <div class="header-label">DIGA AOS JOGADORES QUE SOU UM(A):</div>
@@ -448,7 +411,6 @@ else:
             st.session_state.carta = None
             st.rerun()
 
-    # Recarga em background
     if st.session_state.carta and st.session_state.reserva is None:
         registrar_log("Criando próxima (Auditoria em andamento)...")
         nova_reserva = obter_dados_carta()
@@ -456,7 +418,6 @@ else:
             st.session_state.reserva = nova_reserva
             registrar_log("Próxima pronta!")
 
-# --- PAINEL DE LOGS ---
 st.divider()
 with st.expander("🛠️ Logs do Sistema (Debug)"):
     if not st.session_state.logs:
