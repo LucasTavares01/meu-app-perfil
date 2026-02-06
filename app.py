@@ -4,9 +4,14 @@ import json
 import re
 import traceback
 
-# --- CONFIGURAÇÃO INICIAL ---
-api_key = "AIzaSyBdiuvsktRme3A2k-HhkoQZU211mP76oV8"
-genai.configure(api_key=api_key)
+# --- CONFIGURAÇÃO SEGURA ---
+# Agora o app pega a chave do "Cofre" do Streamlit
+try:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=api_key)
+except Exception:
+    st.error("ERRO: Você esqueceu de configurar a 'Secret' no painel do Streamlit com a nova chave.")
+    st.stop()
 
 # Estilização Visual
 st.markdown("""
@@ -20,90 +25,70 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# Estados da Sessão
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
-if 'last_log' not in st.session_state: st.session_state.last_log = "Iniciando sistema..."
-if 'model_name' not in st.session_state: st.session_state.model_name = None
+if 'last_log' not in st.session_state: st.session_state.last_log = "Sistema reiniciado com nova chave segura..."
 
-# --- FUNÇÃO INTELIGENTE DE SELEÇÃO DE MODELO ---
+# --- FUNÇÃO DE AUTO-DESCOBERTA DE MODELO ---
 def get_best_model():
     try:
-        # Pergunta à API quais modelos estão disponíveis para sua chave
-        st.session_state.last_log += "\nListando modelos disponíveis..."
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
+        st.session_state.last_log += "\nBuscando modelos..."
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        st.session_state.last_log += f"\nModelos encontrados: {available_models}"
-
-        # Tenta achar o Flash, se não, vai no Pro, se não, pega o primeiro que tiver
-        if any('flash' in m for m in available_models):
-            chosen = next(m for m in available_models if 'flash' in m)
-        elif any('gemini-pro' in m for m in available_models):
-            chosen = next(m for m in available_models if 'gemini-pro' in m)
+        # Prioridade para modelos Flash (mais rápidos)
+        if any('gemini-1.5-flash' in m for m in available_models):
+            chosen = next(m for m in available_models if 'gemini-1.5-flash' in m)
+        elif any('gemini-2.5-flash' in m for m in available_models):
+            chosen = next(m for m in available_models if 'gemini-2.5-flash' in m)
         else:
             chosen = available_models[0]
             
-        st.session_state.last_log += f"\nModelo escolhido automaticamente: {chosen}"
+        st.session_state.last_log += f"\nConectado ao modelo: {chosen}"
         return genai.GenerativeModel(chosen)
     except Exception as e:
-        st.session_state.last_log += f"\nERRO FATAL AO BUSCAR MODELOS: {e}"
-        # Fallback de emergência
+        st.session_state.last_log += f"\nERRO DE CONEXÃO: {e}"
         return genai.GenerativeModel('gemini-pro')
 
-# --- FUNÇÃO DE GERAÇÃO ---
 def gerar_carta():
     model = get_best_model()
-    
     prompt = """
-    Aja como um gerador de cartas para o jogo Perfil 7.
-    TAREFA: Gere um JSON válido com 1 tema, 20 dicas e 1 resposta.
-    REGRAS DE DIFICULDADE: 3 fáceis, 7 médias, 10 difíceis.
-    EMBARALHAMENTO: As dicas DEVEM estar em ordem aleatória de dificuldade (não coloque as fáceis primeiro).
-    ESPECIAIS: 
-    - 30% de chance de incluir 'PERCA A VEZ' (substituindo uma dica média).
-    - 30% de chance de incluir 'UM PALPITE A QUALQUER HORA' (substituindo uma dica difícil).
-    FORMATO DE RESPOSTA OBRIGATÓRIO (JSON PURO):
-    {"tema": "EXEMPLO", "dicas": ["1. Dica A", "2. Dica B", ...], "resposta": "RESPOSTA FINAL"}
+    Gere um JSON para o jogo Perfil 7.
+    Tema: Ano, Pessoa, Lugar, Digital ou Coisa.
+    20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
+    Especiais: 30% chance de 'PERCA A VEZ', 30% 'PALPITE A QUALQUER HORA'.
+    JSON PURO: {"tema": "...", "dicas": ["..."], "resposta": "..."}
     """
     try:
         response = model.generate_content(prompt)
-        st.session_state.last_log += f"\n\n--- NOVA GERAÇÃO ---\n{response.text}"
         
-        # Limpeza agressiva para encontrar JSON
-        match = re.search(r'\{.*\}', response.text, re.DOTALL)
+        # Limpeza robusta para garantir JSON
+        clean_text = response.text.replace("```json", "").replace("```", "")
+        match = re.search(r'\{.*\}', clean_text, re.DOTALL)
+        
         if match:
             st.session_state.carta = json.loads(match.group())
             st.session_state.revelado = False
         else:
-            st.session_state.last_log += "\nERRO: A IA não retornou um JSON válido."
-            st.error("Erro na leitura da carta. Tente novamente.")
-            
+            st.session_state.last_log += f"\nERRO: IA não enviou JSON válido.\n{response.text}"
+            st.error("Erro na leitura. Tente de novo.")
     except Exception as e:
-        st.session_state.last_log += f"\nERRO NA GERAÇÃO: {traceback.format_exc()}"
-        st.error("Ocorreu um erro. Verifique os logs abaixo.")
+        st.session_state.last_log += f"\nFALHA: {traceback.format_exc()}"
 
 # --- INTERFACE ---
-st.title("🃏 Perfil 7 AI - Auto-Discovery")
+st.title("🃏 Perfil 7 AI")
 
 if not st.session_state.carta:
-    if st.button("✨ GERAR PRIMEIRA CARTA"):
-        with st.spinner('Conectando ao Google e escolhendo o melhor modelo...'):
+    if st.button("✨ GERAR NOVA CARTA"):
+        with st.spinner('Gerando carta com chave segura...'):
             gerar_carta()
             st.rerun()
 else:
     c = st.session_state.carta
     st.markdown(f'<div class="card-container"><div class="header-text">Sou um(a): {c.get("tema", "???")}</div>', unsafe_allow_html=True)
-    
-    # Exibe as dicas
-    dicas = c.get('dicas', [])
-    for dica in dicas:
+    for dica in c.get('dicas', []):
         st.markdown(f"<div class='hint-line'>{dica}</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
     
-    st.write("")
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🔍 REVELAR"): st.session_state.revelado = True
@@ -115,7 +100,6 @@ else:
     if st.session_state.revelado:
         st.success(f"RESPOSTA: {c.get('resposta')}")
 
-# Logs sempre visíveis para debug
 st.divider()
-with st.expander("🛠️ Logs Técnicos (Verifique aqui se der erro)"):
-    st.text_area("Log do Sistema:", value=st.session_state.last_log, height=300)
+with st.expander("🛠️ Logs"):
+    st.text(st.session_state.last_log)
