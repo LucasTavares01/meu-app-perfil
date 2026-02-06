@@ -16,7 +16,7 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (ESTILO VISUAL) ---
+# --- CSS (ESTILO VISUAL - IDÊNTICO AO SEU CÓDIGO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -52,7 +52,7 @@ st.markdown("""
         width: 140px;
         display: block;
         
-        /* AQUI ESTÁ O AJUSTE:
+        /* AQUI ESTÁ O AJUSTE QUE VOCÊ FEZ:
            50px em cima (para descer da tela)
            -20px em baixo (para puxar o título para perto) */
         margin: 50px auto -20px auto;
@@ -193,15 +193,22 @@ st.markdown("""
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
 
-# --- FUNÇÕES ---
+# --- FUNÇÕES (CORRIGIDAS PARA API FUNCIONAR) ---
 def get_model():
     try:
+        # Tenta listar os modelos disponíveis
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # Prioriza o modelo Flash 1.5 que é o atual e mais rápido
         if any('gemini-1.5-flash' in m for m in models): return genai.GenerativeModel('gemini-1.5-flash')
-        if any('gemini-2.5-flash' in m for m in models): return genai.GenerativeModel('gemini-2.5-flash')
+        if any('gemini-1.5-pro' in m for m in models): return genai.GenerativeModel('gemini-1.5-pro')
+        
+        # Se não achar os novos, tenta o antigo
         return genai.GenerativeModel('gemini-pro')
     except:
-        return genai.GenerativeModel('gemini-pro')
+        # SE DER ERRO NA LISTAGEM, FORÇA O FLASH (Correção do erro 404)
+        # O código antigo forçava o 'gemini-pro' aqui, o que causava o erro
+        return genai.GenerativeModel('gemini-1.5-flash')
 
 def gerar_carta():
     model = get_model()
@@ -222,9 +229,9 @@ def gerar_carta():
             st.session_state.carta = json.loads(match.group())
             st.session_state.revelado = False
         else:
-            st.error("Erro na IA.")
+            st.error("Erro na IA: Resposta inválida.")
     except Exception as e:
-        st.error(f"Erro: {e}")
+        st.error(f"Erro de conexão com a IA: {e}")
 
 # --- INTERFACE ---
 
@@ -239,7 +246,7 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    # Mantendo a estrutura de colunas que deixa o botão centralizado e do tamanho certo
+    # Mantendo a estrutura de colunas original
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
