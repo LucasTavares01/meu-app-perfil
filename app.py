@@ -17,7 +17,7 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (ESTILO VISUAL - IDÊNTICO AO SEU CÓDIGO) ---
+# --- CSS (VISUAL IDÊNTICO AO SEU PREFERIDO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -62,7 +62,7 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
+    /* TÍTULO PRINCIPAL - GIGANTE (100px) */
     .main-title {
         font-size: 100px !important; 
         font-weight: 800;
@@ -155,31 +155,10 @@ st.markdown("""
         line-height: 1.4;
     }
     
-    .special-loss { 
-        background-color: #ff7675; 
-        color: white !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        border: none; 
-        text-align: center; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-    }
-    .special-guess { 
-        background-color: #2ed573; 
-        color: white !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        border: none; 
-        text-align: center; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-    }
+    .special-loss { background-color: #ff7675; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     
-    .stSuccess { 
-        text-align: center; 
-        font-weight: bold; 
-        font-size: 18px; 
-        border-radius: 15px;
-    }
+    .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
     
     .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 10px; border-radius: 5px; margin-bottom: 5px; }
     </style>
@@ -194,70 +173,61 @@ def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
-# --- LÓGICA DE GERAÇÃO (CORRIGIDA PARA NÃO ESTOURAR QUOTA) ---
-def get_model():
-    # AQUI ESTAVA O ERRO: Ele pegava o modelo mais novo (2.5) que tem limite de 20 usos.
-    # AGORA: Vamos priorizar o 2.0 Flash ou 1.5 Flash que têm limites altos.
-    
-    try:
-        # Pega a lista de modelos disponíveis
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        registrar_log(f"Modelos detectados: {len(models)} modelos.")
-        
-        # Tenta pegar o 2.0 Flash (Rápido e bom limite)
-        if any('gemini-2.0-flash' in m for m in models):
-            registrar_log("Usando: gemini-2.0-flash (Quota Alta)")
-            return genai.GenerativeModel('gemini-2.0-flash')
-            
-        # Se não tiver, tenta o 1.5 Flash (O padrãozão robusto)
-        if any('gemini-1.5-flash' in m for m in models):
-            registrar_log("Usando: gemini-1.5-flash (Quota Alta)")
-            return genai.GenerativeModel('gemini-1.5-flash')
-            
-        # Se nada der certo, tenta o Flash Latest
-        if any('gemini-flash-latest' in m for m in models):
-            registrar_log("Usando: gemini-flash-latest")
-            return genai.GenerativeModel('gemini-flash-latest')
-
-        # Fallback final (evita o 2.5 a todo custo se tiver outro)
-        registrar_log("Usando fallback padrão: gemini-pro")
-        return genai.GenerativeModel('gemini-pro')
-        
-    except Exception as e:
-        registrar_log(f"Erro na seleção. Forçando 1.5 Flash: {e}")
-        return genai.GenerativeModel('gemini-1.5-flash')
-
+# --- LÓGICA DE GERAÇÃO EM CASCATA (FALLBACK ROBUSTO) ---
 def gerar_carta():
     registrar_log("Iniciando geração da carta...")
-    try:
-        model = get_model()
-        prompt = """
-        Jogo 'Perfil 7'. Gere JSON.
-        1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-        2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-        3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
-           - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
-           - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
-        FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
-        """
-        response = model.generate_content(prompt)
-        text = response.text.replace("```json", "").replace("```", "").strip()
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            registrar_log("Sucesso! Carta gerada.")
-            st.session_state.carta = json.loads(match.group())
-            st.session_state.revelado = False
-        else:
-            registrar_log("Erro: JSON inválido.")
-            st.error("Erro na IA: Formato inválido.")
-    except Exception as e:
-        # Se der erro de quota (429), avisa de forma amigável
-        if "429" in str(e):
-            registrar_log("ERRO DE QUOTA (429).")
-            st.error("Muitas requisições! Espere 1 minuto e tente novamente.")
-        else:
-            registrar_log(f"ERRO API: {e}")
-            st.error(f"Erro: {e}")
+    
+    # LISTA DE MODELOS POR ORDEM DE PREFERÊNCIA/ESTABILIDADE
+    # 1. 1.5-flash: Mais rápido e estável
+    # 2. 1.5-pro: Backup robusto
+    # 3. 2.0-flash: Último recurso (frequentemente dá erro 429)
+    modelos_para_tentar = [
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-2.0-flash',
+        'gemini-pro' # O antigo legado
+    ]
+    
+    sucesso = False
+    
+    for modelo_nome in modelos_para_tentar:
+        if sucesso: break
+        
+        try:
+            registrar_log(f"Tentando usar modelo: {modelo_nome}...")
+            model = genai.GenerativeModel(modelo_nome)
+            
+            prompt = """
+            Jogo 'Perfil 7'. Gere JSON.
+            1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
+            2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
+            3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
+               - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
+               - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
+            FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+            """
+            
+            # Tenta gerar
+            response = model.generate_content(prompt)
+            text = response.text.replace("```json", "").replace("```", "").strip()
+            match = re.search(r'\{.*\}', text, re.DOTALL)
+            
+            if match:
+                registrar_log(f"SUCESSO com {modelo_nome}!")
+                st.session_state.carta = json.loads(match.group())
+                st.session_state.revelado = False
+                sucesso = True
+            else:
+                registrar_log(f"Falha no parse do JSON com {modelo_nome}.")
+                
+        except Exception as e:
+            # Se der erro (404, 429, etc), apenas loga e o loop tenta o próximo
+            registrar_log(f"Erro com {modelo_nome}: {str(e)[:50]}...")
+            continue
+
+    if not sucesso:
+        registrar_log("TODOS OS MODELOS FALHARAM.")
+        st.error("O sistema está sobrecarregado no momento (Erro 429). Aguarde 1 minuto e tente novamente.")
 
 # --- INTERFACE ---
 
@@ -272,6 +242,7 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
+    # Mantendo a estrutura de colunas original
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
@@ -323,5 +294,5 @@ st.divider()
 with st.expander("🛠️ Logs do Sistema (Debug)"):
     if not st.session_state.logs:
         st.write("Nenhum log registrado ainda.")
-    for log_item in st.session_state.logs[-10:]:
+    for log_item in st.session_state.logs:
         st.markdown(f"<div class='log-text'>{log_item}</div>", unsafe_allow_html=True)
