@@ -174,43 +174,34 @@ def selecionar_dicas_sem_spoiler(todas_dicas, resposta):
     Filtra as dicas que contém a resposta. 
     Descarta a dica inteira e usa as dicas EXTRAS que pedimos para a IA.
     """
-    # Palavras proibidas (Ex: "Praça da Sé" -> ["praça", "sé"])
-    # Ignora palavras curtas ("da", "de", "o")
     palavras_proibidas = [p for p in resposta.lower().split() if len(p) > 3]
-    
     dicas_aprovadas = []
     
     for dica in todas_dicas:
-        if len(dicas_aprovadas) >= 20: # Já temos as 20 necessárias
+        if len(dicas_aprovadas) >= 20: 
             break
             
         dica_lower = dica.lower()
-        
-        # Se for item especial, passa direto
         if "PERCA A VEZ" in dica.upper() or "PALPITE" in dica.upper():
             dicas_aprovadas.append(dica)
             continue
             
-        # Verifica se tem spoiler
         tem_spoiler = False
         for palavra in palavras_proibidas:
             if palavra in dica_lower:
                 tem_spoiler = True
-                # Loga que descartou para debug
                 registrar_log(f"Dica descartada (Spoiler '{palavra}'): {dica[:30]}...")
                 break
         
-        # Se NÃO tem spoiler, aprova
         if not tem_spoiler:
             dicas_aprovadas.append(dica)
             
-    # Se por azar faltar dica (muito spoiler), completa com genérica
     while len(dicas_aprovadas) < 20:
-        dicas_aprovadas.append(f"{len(dicas_aprovadas)+1}. Fato adicional sobre este tema.")
+        dicas_aprovadas.append(f"{len(dicas_aprovadas)+1}. Fato adicional e curioso sobre este tema.")
         
     return dicas_aprovadas
 
-# --- LÓGICA DE GERAÇÃO ---
+# --- LÓGICA DE GERAÇÃO ESPECIALIZADA ---
 def obter_dados_carta():
     tentativas = 0
     max_tentativas = 3 
@@ -224,22 +215,37 @@ def obter_dados_carta():
         
         registrar_log(f"Tentativa {tentativas+1}: Sorteado '{tema_sorteado}'.")
         
-        # PROMPT: PEDIMOS 25 DICAS PARA TER "GORDURA" PARA QUEIMAR
+        # 2. SELEÇÃO DO PROMPT ADEQUADO PARA O TEMA
+        if tema_sorteado == "ANO":
+            prompt_especifico = """
+            DIRETRIZES PARA 'ANO':
+            - A RESPOSTA deve ser APENAS UM NÚMERO DE 4 DÍGITOS (Ex: 1994, 2001, 1500, 1945).
+            - AS DICAS DEVEM SER OBRIGATORIAMENTE FATOS HISTÓRICOS QUE OCORRERAM NESSE ANO.
+            - Use: Nascimentos de famosos, Mortes impactantes, Lançamentos de filmes/músicas, Invenções, Guerras ou Tratados.
+            - PROIBIDO: Usar fatos matemáticos, científicos genéricos (como peso atômico) ou coisas que não são eventos do ano.
+            - Exemplo de dica boa: 'Neste ano foi lançado o primeiro filme de Toy Story'.
+            """
+        else:
+            prompt_especifico = """
+            DIRETRIZES PARA PESSOA/LUGAR/DIGITAL/COISA:
+            - Evite respostas óbvias (Cadeira, Mesa, Cachorro).
+            - Use curiosidades específicas, materiais, localização exata, biografia resumida.
+            - As primeiras dicas devem ser difíceis e obscuras. As últimas mais fáceis.
+            """
+
+        # PROMPT GERAL
         prompt = f"""
         Você é o criador oficial do jogo 'Perfil'.
         
         TAREFA: Criar uma carta para o tema OBRIGATÓRIO: "{tema_sorteado}".
+        {prompt_especifico}
         
-        REGRAS CRÍTICAS:
-        1. Se o tema for 'ANO': A resposta deve ser APENAS O NÚMERO (Ex: 1988). Sem 'A.C.' ou texto.
-        2. GERE 25 DICAS (para que eu possa descartar as que tiverem spoiler).
-        3. A resposta NÃO PODE aparecer no texto das dicas.
+        REGRAS GERAIS:
+        1. GERE 25 DICAS (para que eu possa descartar as que tiverem spoiler).
+        2. A resposta NÃO PODE aparecer no texto das dicas.
+        3. DICAS DEVEM SER VERDADEIRAS. Não invente fatos.
         
         PROIBIDO REPETIR: {proibidos_str}
-        
-        ESTILO PERFIL (DIFÍCIL E CURIOSO):
-        - Use fatos obscuros, números exatos, materiais e história.
-        - Nada de "É famoso" ou "Fica na Ásia".
         
         ESTRUTURA DA LISTA DE DICAS:
         - 30% chance de ter 1 'PERCA A VEZ'.
@@ -253,11 +259,12 @@ def obter_dados_carta():
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
-                    {"role": "system", "content": "Você é uma API JSON. Responda apenas JSON."},
+                    {"role": "system", "content": "Você é um especialista em História e Conhecimentos Gerais. Você é FACTUAL e PRECISO."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.85, 
-                max_tokens=1800, # Aumentei token pois pedimos 25 dicas
+                # AQUI ESTÁ O SEGREDO: TEMPERATURA BAIXA PARA FATOS REAIS
+                temperature=0.3, 
+                max_tokens=1800,
                 top_p=1,
                 stream=False,
                 response_format={"type": "json_object"}
@@ -276,20 +283,23 @@ def obter_dados_carta():
                 tentativas += 1
                 continue 
             
-            # Limpeza de Ano
+            # Limpeza de Ano (Garante 4 dígitos)
             if tema_sorteado == "ANO":
                 apenas_numeros = re.sub("[^0-9]", "", str(resposta_atual))
                 if len(apenas_numeros) == 4:
                     dados["resposta"] = apenas_numeros
-            
+                else:
+                    # Se gerou ano estranho, tenta de novo
+                    registrar_log("Ano inválido gerado. Retentando...")
+                    tentativas += 1
+                    continue
+
             st.session_state.used_answers.append(resposta_atual)
             
-            # --- FILTRAGEM DE SPOILERS (A GRANDE MUDANÇA) ---
-            # Pegamos as 25 dicas brutas e selecionamos as 20 melhores sem a resposta
+            # --- FILTRAGEM DE SPOILERS + FORMATAÇÃO ---
             dicas_brutas = dados.get('dicas', [])
             dicas_filtradas = selecionar_dicas_sem_spoiler(dicas_brutas, resposta_atual)
             
-            # --- FORMATAÇÃO FINAL (Itens Especiais) ---
             dicas_finais = []
             tem_perca = False
             tem_palpite = False
@@ -299,7 +309,7 @@ def obter_dados_carta():
                 
                 if "PERCA A VEZ" in d_upper:
                     if not tem_perca:
-                        dicas_finais.append("2. PERCA A VEZ") # Posição 2 estética, mas embaralhada depois
+                        dicas_finais.append("2. PERCA A VEZ") 
                         tem_perca = True
                     else:
                         dicas_finais.append(f"{len(dicas_finais)+1}. Curiosidade extra sobre o tema.")
@@ -313,8 +323,7 @@ def obter_dados_carta():
                 else:
                     dicas_finais.append(dica)
             
-            dados['dicas'] = dicas_finais[:20] # Corta em 20 exatas
-            
+            dados['dicas'] = dicas_finais[:20]
             registrar_log(f"Carta Aprovada: {resposta_atual} ({tema_sorteado})")
             return dados
             
