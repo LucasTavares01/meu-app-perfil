@@ -19,7 +19,8 @@ except Exception:
 # --- CSS (ESTILO VISUAL) ---
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
+    /* Importando fontes: Montserrat (textos) e Kaushan Script (título neon) */
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&family=Kaushan+Script&display=swap');
 
     /* Fundo Mágico */
     .stApp {
@@ -31,61 +32,71 @@ st.markdown("""
     }
 
     #MainMenu, footer, header {visibility: hidden;}
-    .main .block-container { padding-top: 2rem; }
+    .main .block-container { padding-top: 1rem; } /* Menos espaço no topo */
 
     /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
         justify-content: center;
-        color: #F3C623; /* Ajustado para o mostarda */
+        color: #F3C623;
         font-weight: bold;
         margin-top: 10px;
         margin-bottom: 10px;
     }
 
-    /* --- TELA DE BOAS-VINDAS (NEON MOSTARDA) --- */
+    /* --- TELA DE BOAS-VINDAS (ESTILO NEON SCRIPT) --- */
     .welcome-box {
         text-align: center;
         padding: 10px;
-        margin-bottom: 30px;
+        margin-bottom: 20px;
+        position: relative; /* Para o z-index funcionar */
     }
+    
     .golden-dice-icon {
-        width: 140px;
+        width: 150px; /* Um pouco maior */
         display: block;
-        margin: 0 auto 25px auto;
-        /* Brilho ajustado para o tom mostarda */
-        filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
+        margin: 0 auto;
+        /* Brilho ajustado e posição para ficar atrás do texto */
+        filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.5));
         animation: floater 3s ease-in-out infinite;
+        position: relative;
+        z-index: 0; /* Fica atrás do título */
+        margin-top: -60px; /* Puxa para cima para ficar atrás do texto */
+        opacity: 0.9;
     }
     @keyframes floater {
         0% { transform: translateY(0px); }
-        50% { transform: translateY(-12px); }
+        50% { transform: translateY(-10px); }
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
+    /* TÍTULO PRINCIPAL - NEON SCRIPT GIGANTE */
     .main-title {
-        font-size: 65px;
-        font-weight: 800;
-        color: #F3C623; /* Amarelo Mostarda Vibrante */
+        font-family: 'Kaushan Script', cursive; /* Fonte estilo script */
+        font-size: 110px; /* Tamanho gigante */
+        color: #ffffff; /* Núcleo branco do neon */
         margin: 0;
-        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
+        padding-top: 20px;
+        position: relative;
+        z-index: 1; /* Fica na frente do dado */
+        /* Efeito de aura neon multicamadas intenso */
         text-shadow:
-            0 0 5px  #F3C623,  /* Brilho interno */
-            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
-            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
-            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
+            0 0 5px  #ffffff,   /* Brilho branco interno */
+            0 0 15px #FFD700,   /* Brilho amarelo próximo */
+            0 0 30px #FFD700,   /* Aura amarela média */
+            0 0 50px #FFA500,   /* Aura laranja distante */
+            0 0 80px #FF4500;   /* Aura vermelha/laranja muito distante */
         text-align: center;
-        line-height: 1.2;
-        letter-spacing: 1px;
+        line-height: 0.9; /* Linhas mais próximas */
+        transform: rotate(-3deg); /* Leve inclinação para estilo */
     }
     
     .subtitle {
-        font-size: 28px; /* Levemente reduzido para bater com a referência */
+        font-size: 24px;
         font-weight: 400;
         color: #ffffff;
-        margin-top: 10px;
-        margin-bottom: 30px;
-        text-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        margin-top: 30px; /* Mais espaço do dado */
+        margin-bottom: 20px;
+        text-shadow: 0 2px 5px rgba(0,0,0,0.8);
         text-align: center;
     }
     
@@ -107,20 +118,21 @@ st.markdown("""
         height: 55px;
         border-radius: 50px !important;
         border: 3px solid #fff200;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         transition: 0.3s;
         text-transform: uppercase;
     }
     .stButton > button:hover {
         background-position: right center;
-        transform: translateY(-2px);
-        box-shadow: 0 10px 25px rgba(255, 200, 0, 0.4);
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 15px 30px rgba(255, 200, 0, 0.5);
         color: #000;
     }
     .stButton > button:active {
         color: #5d2e01;
         border-color: #fff200;
         background-color: #feca57;
+        transform: translateY(-1px);
     }
 
     /* --- ESTILO DAS CARTAS (MANTIDO PERFEITO) --- */
@@ -224,11 +236,11 @@ def gerar_carta():
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL COM NEON MOSTARDA ---
+    # --- TELA INICIAL COM NEON SCRIPT GIGANTE ---
     st.markdown("""
         <div class="welcome-box">
-            <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
             <h1 class="main-title">Perfil 7</h1>
+            <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
             <div class="subtitle">Bem-vindo!</div>
             <div class="description">Clique abaixo para gerar uma nova carta com Inteligência Artificial.</div>
         </div>
@@ -236,6 +248,16 @@ if not st.session_state.carta:
     
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
+        # Botão um pouco maior e mais chamativo
+        st.markdown("""
+            <style>
+            div[data-testid="column"] .stButton > button {
+                font-size: 20px !important;
+                padding: 25px 20px !important;
+                height: auto !important;
+            }
+            </style>
+        """, unsafe_allow_html=True)
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
             with st.spinner('Sorteando...'):
                 gerar_carta()
