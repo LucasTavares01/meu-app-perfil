@@ -64,7 +64,7 @@ st.markdown("""
     
     /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 65px;
+        font-size: 100px !important; /* <--- AQUI: AUMENTADO E FORÇADO */
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
@@ -75,7 +75,7 @@ st.markdown("""
             0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
             0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
         text-align: center;
-        line-height: 1.2;
+        line-height: 1.1;
         letter-spacing: 1px;
     }
     
@@ -234,7 +234,8 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    c1, c2, c3 = st.columns([1, 2, 1])
+    # Mantendo a estrutura original de colunas que você gostou
+    c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
             with st.spinner('Sorteando...'):
