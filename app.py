@@ -170,10 +170,7 @@ def verificar_similaridade(nova_resposta):
     return False
 
 def selecionar_dicas_sem_spoiler(todas_dicas, resposta):
-    """
-    Filtra as dicas que contém a resposta. 
-    Descarta a dica inteira e usa as dicas EXTRAS que pedimos para a IA.
-    """
+    """Filtra dicas com spoiler e descarta a frase inteira."""
     palavras_proibidas = [p for p in resposta.lower().split() if len(p) > 3]
     dicas_aprovadas = []
     
@@ -190,64 +187,67 @@ def selecionar_dicas_sem_spoiler(todas_dicas, resposta):
         for palavra in palavras_proibidas:
             if palavra in dica_lower:
                 tem_spoiler = True
-                registrar_log(f"Dica descartada (Spoiler '{palavra}'): {dica[:30]}...")
+                registrar_log(f"Spoiler removido: {dica[:30]}...")
                 break
         
         if not tem_spoiler:
             dicas_aprovadas.append(dica)
             
     while len(dicas_aprovadas) < 20:
-        dicas_aprovadas.append(f"{len(dicas_aprovadas)+1}. Fato adicional e curioso sobre este tema.")
+        dicas_aprovadas.append(f"{len(dicas_aprovadas)+1}. Fato adicional sobre este tema.")
         
     return dicas_aprovadas
 
-# --- LÓGICA DE GERAÇÃO ESPECIALIZADA ---
+# --- LÓGICA DE GERAÇÃO (TURBO) ---
 def obter_dados_carta():
     tentativas = 0
     max_tentativas = 3 
     
     while tentativas < max_tentativas:
-        # 1. ROLETA DE TEMAS
+        # 1. Sorteio do Tema
         temas_possiveis = ["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"]
         tema_sorteado = random.choice(temas_possiveis)
         
         proibidos_str = ", ".join(st.session_state.used_answers[-20:]) 
         
-        registrar_log(f"Tentativa {tentativas+1}: Sorteado '{tema_sorteado}'.")
+        registrar_log(f"Tentativa {tentativas+1}: '{tema_sorteado}'.")
         
-        # 2. SELEÇÃO DO PROMPT ADEQUADO PARA O TEMA
+        # 2. CONFIGURAÇÃO DO PROMPT E TEMPERATURA POR TEMA
         if tema_sorteado == "ANO":
+            # Temperatura BAIXA para fatos históricos (evita alucinação)
+            temp_model = 0.1 
             prompt_especifico = """
-            DIRETRIZES PARA 'ANO':
-            - A RESPOSTA deve ser APENAS UM NÚMERO DE 4 DÍGITOS (Ex: 1994, 2001, 1500, 1945).
-            - AS DICAS DEVEM SER OBRIGATORIAMENTE FATOS HISTÓRICOS QUE OCORRERAM NESSE ANO.
-            - Use: Nascimentos de famosos, Mortes impactantes, Lançamentos de filmes/músicas, Invenções, Guerras ou Tratados.
-            - PROIBIDO: Usar fatos matemáticos, científicos genéricos (como peso atômico) ou coisas que não são eventos do ano.
-            - Exemplo de dica boa: 'Neste ano foi lançado o primeiro filme de Toy Story'.
+            ATENÇÃO MÁXIMA - MODO HISTORIADOR RIGOROSO:
+            - A RESPOSTA deve ser UM ANO de 4 dígitos (Ex: 1994, 2001, 1500).
+            - TODAS as dicas devem ser eventos que ocorreram EXATAMENTE neste ano.
+            - SE O EVENTO NÃO ACONTECEU NESSE ANO, NÃO O INCLUA.
+            - Verifique duas vezes: Aconteceu neste ano ou na década? Se for década, DESCARTE.
+            - Use: "Neste ano nasceu...", "Neste ano foi lançado...", "Neste ano ocorreu a batalha...".
+            - PROIBIDO: Usar fatos científicos genéricos (velocidade da luz, pi, etc) que não mudam com o ano.
             """
         else:
+            # Temperatura MÉDIA para criatividade descritiva
+            temp_model = 0.7
             prompt_especifico = """
             DIRETRIZES PARA PESSOA/LUGAR/DIGITAL/COISA:
-            - Evite respostas óbvias (Cadeira, Mesa, Cachorro).
-            - Use curiosidades específicas, materiais, localização exata, biografia resumida.
-            - As primeiras dicas devem ser difíceis e obscuras. As últimas mais fáceis.
+            - Evite respostas óbvias (Mesa, Cadeira).
+            - Use curiosidades específicas, materiais, localização exata, biografia.
+            - Nada de "É muito famoso" ou "Existe há muito tempo".
             """
 
-        # PROMPT GERAL
         prompt = f"""
         Você é o criador oficial do jogo 'Perfil'.
         
-        TAREFA: Criar uma carta para o tema OBRIGATÓRIO: "{tema_sorteado}".
+        TAREFA: Criar carta para o tema: "{tema_sorteado}".
         {prompt_especifico}
         
         REGRAS GERAIS:
         1. GERE 25 DICAS (para que eu possa descartar as que tiverem spoiler).
         2. A resposta NÃO PODE aparecer no texto das dicas.
-        3. DICAS DEVEM SER VERDADEIRAS. Não invente fatos.
         
         PROIBIDO REPETIR: {proibidos_str}
         
-        ESTRUTURA DA LISTA DE DICAS:
+        ESTRUTURA:
         - 30% chance de ter 1 'PERCA A VEZ'.
         - 30% chance de ter 1 'UM PALPITE A QUALQUER HORA'.
         
@@ -259,11 +259,10 @@ def obter_dados_carta():
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
-                    {"role": "system", "content": "Você é um especialista em História e Conhecimentos Gerais. Você é FACTUAL e PRECISO."},
+                    {"role": "system", "content": "Você é um banco de dados de fatos verificados. Você não inventa datas."},
                     {"role": "user", "content": prompt}
                 ],
-                # AQUI ESTÁ O SEGREDO: TEMPERATURA BAIXA PARA FATOS REAIS
-                temperature=0.3, 
+                temperature=temp_model, # Varia conforme o tema!
                 max_tokens=1800,
                 top_p=1,
                 stream=False,
@@ -273,30 +272,27 @@ def obter_dados_carta():
             content = completion.choices[0].message.content
             dados = json.loads(content)
             
-            # Validações Básicas
+            # Ajustes Finais
             dados["tema"] = tema_sorteado
             resposta_atual = dados["resposta"]
             
             # Anti-Repetição
             if verificar_similaridade(resposta_atual):
-                registrar_log(f"REPETIDA: '{resposta_atual}'. Retentando...")
                 tentativas += 1
                 continue 
             
-            # Limpeza de Ano (Garante 4 dígitos)
+            # Limpeza de Ano
             if tema_sorteado == "ANO":
                 apenas_numeros = re.sub("[^0-9]", "", str(resposta_atual))
                 if len(apenas_numeros) == 4:
                     dados["resposta"] = apenas_numeros
                 else:
-                    # Se gerou ano estranho, tenta de novo
-                    registrar_log("Ano inválido gerado. Retentando...")
                     tentativas += 1
-                    continue
+                    continue # Ano inválido, tenta de novo
 
             st.session_state.used_answers.append(resposta_atual)
             
-            # --- FILTRAGEM DE SPOILERS + FORMATAÇÃO ---
+            # Filtragem
             dicas_brutas = dados.get('dicas', [])
             dicas_filtradas = selecionar_dicas_sem_spoiler(dicas_brutas, resposta_atual)
             
@@ -358,7 +354,7 @@ if not st.session_state.carta:
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                with st.spinner('Sorteando tema e pesquisando fatos...'):
+                with st.spinner('Pesquisando fatos históricos e curiosidades...'):
                     st.session_state.carta = obter_dados_carta()
                     if st.session_state.carta:
                         st.session_state.reserva = obter_dados_carta()
@@ -406,7 +402,7 @@ else:
 
     # Recarga em background
     if st.session_state.carta and st.session_state.reserva is None:
-        registrar_log("Criando próxima (com tema aleatório)...")
+        registrar_log("Gerando próxima carta no background...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
