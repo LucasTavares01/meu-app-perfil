@@ -16,12 +16,11 @@ except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
 
-# --- CSS (ESTILO VISUAL) ---
+# --- CSS (ESTILO VISUAL - MANTIDO IDÊNTICO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
 
-    /* Fundo Mágico */
     .stApp {
         background: rgb(40,15,65);
         background: linear-gradient(135deg, rgba(40,15,65,1) 0%, rgba(86,22,86,1) 30%, rgba(186,75,35,1) 65%, rgba(232,183,77,1) 100%);
@@ -33,16 +32,14 @@ st.markdown("""
     #MainMenu, footer, header {visibility: hidden;}
     .main .block-container { padding-top: 2rem; }
 
-    /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
         justify-content: center;
-        color: #F3C623; /* Ajustado para o mostarda */
+        color: #F3C623;
         font-weight: bold;
         margin-top: 10px;
         margin-bottom: 10px;
     }
 
-    /* --- TELA DE BOAS-VINDAS (NEON MOSTARDA) --- */
     .welcome-box {
         text-align: center;
         padding: 10px;
@@ -51,13 +48,7 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        
-        /* AQUI ESTÁ O AJUSTE:
-           50px em cima (para descer da tela)
-           -20px em baixo (para puxar o título para perto) */
-        margin: 50px auto -20px auto;
-        
-        /* Brilho ajustado para o tom mostarda */
+        margin: 50px auto -20px auto; /* Mantido o ajuste de posição */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -67,25 +58,23 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 100px !important; 
+        font-size: 100px !important;
         font-weight: 800;
-        color: #F3C623; /* Amarelo Mostarda Vibrante */
+        color: #F3C623;
         margin: 0;
-        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
         text-shadow:
-            0 0 5px  #F3C623,  /* Brilho interno */
-            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
-            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
-            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
+            0 0 5px  #F3C623,
+            0 0 20px rgba(243, 198, 35, 0.8),
+            0 0 40px rgba(243, 198, 35, 0.6),
+            0 0 60px rgba(243, 198, 35, 0.4);
         text-align: center;
         line-height: 1.1;
         letter-spacing: 1px;
     }
     
     .subtitle {
-        font-size: 28px; /* Levemente reduzido para bater com a referência */
+        font-size: 28px;
         font-weight: 400;
         color: #ffffff;
         margin-top: 10px;
@@ -102,7 +91,6 @@ st.markdown("""
         line-height: 1.5;
     }
 
-    /* --- BOTÃO DOURADO --- */
     .stButton > button {
         background: linear-gradient(90deg, #ff9f43, #feca57, #ff9f43);
         background-size: 200% auto;
@@ -128,7 +116,6 @@ st.markdown("""
         background-color: #feca57;
     }
 
-    /* --- ESTILO DAS CARTAS (MANTIDO PERFEITO) --- */
     .card-theme-box {
         background: #ffffff;
         padding: 20px;
@@ -161,39 +148,19 @@ st.markdown("""
         line-height: 1.4;
     }
     
-    .special-loss { 
-        background-color: #ff7675; 
-        color: white !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        border: none; 
-        text-align: center; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-    }
-    .special-guess { 
-        background-color: #2ed573; 
-        color: white !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        border: none; 
-        text-align: center; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-    }
+    .special-loss { background-color: #ff7675; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
     
-    .stSuccess { 
-        text-align: center; 
-        font-weight: bold; 
-        font-size: 18px; 
-        border-radius: 15px;
-    }
+    .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS ---
+# --- ESTADOS (AGORA COM RESERVA) ---
 if 'carta' not in st.session_state: st.session_state.carta = None
+if 'reserva' not in st.session_state: st.session_state.reserva = None # Carta buffer
 if 'revelado' not in st.session_state: st.session_state.revelado = False
 
-# --- FUNÇÕES ---
+# --- LÓGICA DE GERAÇÃO (SEPARADA DA TELA) ---
 def get_model():
     try:
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -203,7 +170,8 @@ def get_model():
     except:
         return genai.GenerativeModel('gemini-pro')
 
-def gerar_carta():
+def obter_dados_carta():
+    """Gera apenas os dados da carta, sem jogar na tela."""
     model = get_model()
     prompt = """
     Jogo 'Perfil 7'. Gere JSON.
@@ -219,17 +187,16 @@ def gerar_carta():
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
-            st.session_state.carta = json.loads(match.group())
-            st.session_state.revelado = False
+            return json.loads(match.group())
         else:
-            st.error("Erro na IA.")
-    except Exception as e:
-        st.error(f"Erro: {e}")
+            return None
+    except Exception:
+        return None
 
 # --- INTERFACE ---
 
+# 1. TELA INICIAL (SEM CARTA ATUAL)
 if not st.session_state.carta:
-    # --- TELA INICIAL ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
@@ -239,14 +206,16 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    # Mantendo a estrutura de colunas que deixa o botão centralizado e do tamanho certo
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            with st.spinner('Sorteando...'):
-                gerar_carta()
+            with st.spinner('Inicializando sistema e criando buffer... (A primeira vez demora um pouco mais)'):
+                # Primeira vez: Gera a atual E a reserva
+                st.session_state.carta = obter_dados_carta()
+                st.session_state.reserva = obter_dados_carta()
                 st.rerun()
 
+# 2. TELA DO JOGO (COM CARTA)
 else:
     c = st.session_state.carta
     
@@ -278,8 +247,31 @@ else:
     
     st.markdown(tips_html, unsafe_allow_html=True)
     
+    # BOTÃO PROXIMA CARTA (USA O BUFFER)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            st.session_state.carta = None
-            st.rerun()
+            if st.session_state.reserva:
+                # Pega a carta do buffer instantaneamente
+                st.session_state.carta = st.session_state.reserva
+                st.session_state.reserva = None # Esvazia o buffer para forçar recarga
+                st.session_state.revelado = False
+                st.rerun()
+            else:
+                # Caso de emergência se o buffer falhou
+                with st.spinner("Gerando carta de emergência..."):
+                    st.session_state.carta = obter_dados_carta()
+                    st.session_state.revelado = False
+                    st.rerun()
+
+    # --- RECARGA DE BUFFER EM BACKGROUND ---
+    # Isso roda DEPOIS que a tela foi desenhada. O usuário já está vendo a carta nova.
+    # Enquanto ele lê o tema, a gente gera a próxima carta reserva.
+    if st.session_state.carta and st.session_state.reserva is None:
+        # Spinner pequeno discreto na parte inferior ou apenas execução
+        # Se quiser esconder o spinner, remova o "with st.spinner"
+        with st.spinner(" 🎲 Preparando a próxima carta nos bastidores... Pode jogar!"):
+            nova_reserva = obter_dados_carta()
+            if nova_reserva:
+                st.session_state.reserva = nova_reserva
+                # Apenas salvamos no estado, não damos rerun para não piscar a tela
