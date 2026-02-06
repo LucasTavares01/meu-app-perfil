@@ -4,6 +4,8 @@ import json
 import re
 import traceback
 import time
+import random
+import difflib # Biblioteca para comparar similaridade de texto
 
 # --- CONFIGURAÇÃO DE SEGURANÇA (GROQ) ---
 try:
@@ -149,81 +151,98 @@ if 'carta' not in st.session_state: st.session_state.carta = None
 if 'reserva' not in st.session_state: st.session_state.reserva = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
 if 'logs' not in st.session_state: st.session_state.logs = []
+if 'used_answers' not in st.session_state: st.session_state.used_answers = [] # Memória de respostas
 
 def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
-# --- LÓGICA DE GERAÇÃO (TURBO PERFIL + VALIDAÇÃO DE TEMA) ---
-def obter_dados_carta():
-    registrar_log("Gerando carta nível Perfil Pro...")
+def verificar_similaridade(nova_resposta):
+    """Verifica se a resposta já saiu (mesmo que escrita um pouco diferente)"""
+    nova = nova_resposta.lower().strip()
     
-    # PROMPT DE MESTRE DE TRIVIA
-    prompt = """
-    Você é o criador oficial do jogo de tabuleiro 'Perfil'.
-    Sua missão: Criar uma carta de adivinhação inteligente, curiosa e difícil.
-    
-    REGRAS DE TEMA (CRÍTICO):
-    O campo "tema" SÓ PODE ser um destes 5 valores exatos: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-    
-    PASSO 1: Escolha um TEMA válido e uma RESPOSTA (Evite coisas óbvias como 'Cadeira' ou 'Cachorro'. Prefira 'Trono de Ferro', 'Ornitorrinco', 'Muralha da China').
-
-    PASSO 2: Gere 20 dicas seguindo ESTRITAMENTE estas regras de estilo:
-    
-    PROIBIDO (Dicas Ruins):
-    - "É muito famoso", "Fica na Europa", "Muitas pessoas usam", "Existe há muito tempo".
-    (Isso é genérico e chato. Não use!)
-
-    OBRIGATÓRIO (Dicas Boas - Estilo Perfil):
-    - Use CURIOSIDADES ESPECÍFICAS: "Fui inaugurado pelo imperador Tito em 80 d.C." (Para Coliseu).
-    - Use MATERIAIS/QUÍMICA: "Minha composição inclui mármore travertino e tufo".
-    - Use ETIMOLOGIA: "Meu nome vem do grego para 'aquele que escreve'".
-    - Use ASSOCIAÇÕES INDIRETAS: "Já fui palco de batalhas navais artificiais".
-    
-    PROGRESSÃO DA CARTA:
-    - Dicas 1 a 7: DEVEM SER DIFÍCEIS. Use fatos técnicos, históricos obscuros ou curiosidades numéricas. O jogador não deve acertar aqui.
-    - Dicas 8 a 14: Dicas contextuais. Onde fica, quem usa, para que serve, mas sem entregar o nome.
-    - Dicas 15 a 20: Dicas facilitadoras que definem a resposta.
-
-    REGRAS DE ITENS ESPECIAIS:
-    - 30% de chance de aparecer 1 'PERCA A VEZ' (Máximo 1 na lista).
-    - 30% de chance de aparecer 1 'UM PALPITE A QUALQUER HORA' (Máximo 1 na lista).
-    
-    Responda APENAS o JSON.
-    FORMATO: {"tema": "ESCOLHA_UM_DOS_5", "dicas": ["1. Curiosidade obscura...", "2. Fato técnico...", ...], "resposta": "NOME EXATO"}
-    """
-    
-    try:
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": "Você é uma API JSON estrita. Responda apenas o JSON solicitado."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.8,
-            max_tokens=1500,
-            top_p=1,
-            stream=False,
-            response_format={"type": "json_object"}
-        )
+    for usada in st.session_state.used_answers:
+        usada_clean = usada.lower().strip()
         
-        content = completion.choices[0].message.content
+        # 1. Verificação direta ou contida
+        if nova in usada_clean or usada_clean in nova:
+            return True
+            
+        # 2. Verificação de similaridade (Fuzzy) - 80% igual
+        similaridade = difflib.SequenceMatcher(None, nova, usada_clean).ratio()
+        if similaridade > 0.8:
+            return True
+            
+    return False
+
+# --- LÓGICA DE GERAÇÃO (COM ROLETA E ANTI-REPETIÇÃO) ---
+def obter_dados_carta():
+    tentativas = 0
+    max_tentativas = 3 # Tenta até 3 vezes se vier repetida
+    
+    while tentativas < max_tentativas:
+        # 1. ROLETA DE TEMAS (PYTHON DECIDE, NÃO A IA)
+        temas_possiveis = ["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"]
+        tema_sorteado = random.choice(temas_possiveis)
+        
+        # Lista de proibidos para o prompt (últimas 20 respostas)
+        proibidos_str = ", ".join(st.session_state.used_answers[-20:]) 
+        
+        registrar_log(f"Tentativa {tentativas+1}: Sorteado '{tema_sorteado}'. Evitar: [{proibidos_str[:30]}...]")
+        
+        prompt = f"""
+        Você é o criador oficial do jogo 'Perfil'.
+        
+        TAREFA: Criar uma carta para o tema OBRIGATÓRIO: "{tema_sorteado}".
+        
+        PROIBIDO REPETIR ESTAS RESPOSTAS (JÁ FORAM USADAS):
+        {proibidos_str}
+        
+        DIRETRIZES DE ESTILO (CRÍTICO):
+        1. EVITE DICAS GENÉRICAS ("É famoso", "Fica na Europa", "Muito antigo").
+        2. USE FATOS CURIOSOS: Datas exatas, materiais, etimologia, fatos históricos obscuros.
+        3. DIFICULDADE: Comece muito difícil e vá facilitando.
+        
+        ESTRUTURA:
+        - 20 Dicas totais.
+        - 30% chance de 'PERCA A VEZ' (Max 1).
+        - 30% chance de 'UM PALPITE A QUALQUER HORA' (Max 1).
+        
+        Retorne APENAS JSON.
+        FORMATO: {{"tema": "{tema_sorteado}", "dicas": ["..."], "resposta": "NOME ESPECÍFICO"}}
+        """
         
         try:
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": "Você é uma API JSON de Trivia. Responda apenas JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.85, # Alta criatividade para variar respostas
+                max_tokens=1500,
+                top_p=1,
+                stream=False,
+                response_format={"type": "json_object"}
+            )
+            
+            content = completion.choices[0].message.content
             dados = json.loads(content)
             
-            # --- VALIDAÇÃO E CORREÇÃO DE TEMA ---
-            temas_validos = ["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"]
-            tema_atual = dados.get("tema", "COISA").upper()
+            # Validação do Tema (Força o que foi sorteado)
+            dados["tema"] = tema_sorteado
             
-            # Se a IA inventar moda, forçamos para "COISA" ou o mais próximo
-            if tema_atual not in temas_validos:
-                registrar_log(f"Tema corrigido: {tema_atual} -> COISA")
-                dados["tema"] = "COISA"
-            else:
-                dados["tema"] = tema_atual
-
-            # --- HIGIENIZAÇÃO (Mantida por segurança) ---
+            # VERIFICAÇÃO DE REPETIÇÃO
+            resposta_atual = dados["resposta"]
+            if verificar_similaridade(resposta_atual):
+                registrar_log(f"REPETIDA DETECTADA: '{resposta_atual}'. Gerando outra...")
+                tentativas += 1
+                continue # Tenta de novo
+            
+            # Se passou, salva na memória e processa
+            st.session_state.used_answers.append(resposta_atual)
+            
+            # Higienização de Dicas (Como antes)
             dicas_limpas = []
             tem_perca = False
             tem_palpite = False
@@ -235,27 +254,26 @@ def obter_dados_carta():
                         dicas_limpas.append(dica)
                         tem_perca = True
                     else:
-                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica extra: Tenho relação com a história de {dados['resposta']}")
+                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica extra sobre {resposta_atual}")
                 elif "PALPITE" in d_upper:
                     if not tem_palpite:
                         dicas_limpas.append(dica)
                         tem_palpite = True
                     else:
-                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Fato curioso: Sou único no mundo.")
+                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Curiosidade sobre {resposta_atual}")
                 else:
                     dicas_limpas.append(dica)
             
             dados['dicas'] = dicas_limpas[:20]
-            registrar_log(f"Carta criada: {dados['resposta']} ({dados['tema']})")
+            registrar_log(f"Carta Aprovada: {resposta_atual} ({tema_sorteado})")
             return dados
             
-        except json.JSONDecodeError:
-            registrar_log("Erro ao processar JSON da IA.")
-            return None
-                
-    except Exception as e:
-        registrar_log(f"ERRO API: {e}")
-        return None
+        except Exception as e:
+            registrar_log(f"Erro na geração: {e}")
+            tentativas += 1
+            
+    registrar_log("Falha após 3 tentativas de evitar repetição.")
+    return None
 
 # --- INTERFACE ---
 
@@ -281,7 +299,7 @@ if not st.session_state.carta:
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                with st.spinner('Pesquisando fatos curiosos e obscuros...'):
+                with st.spinner('Sorteando tema e pesquisando fatos...'):
                     st.session_state.carta = obter_dados_carta()
                     if st.session_state.carta:
                         st.session_state.reserva = obter_dados_carta()
@@ -329,7 +347,7 @@ else:
 
     # Recarga em background
     if st.session_state.carta and st.session_state.reserva is None:
-        registrar_log("Criando próxima carta desafiadora...")
+        registrar_log("Criando próxima (com tema aleatório)...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
