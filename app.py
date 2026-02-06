@@ -62,18 +62,18 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
+    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA GIGANTE */
     .main-title {
-        font-size: 1px; /* AUMENTADO DE 65px PARA 95px */
+        font-size: 100px !important; /* AUMENTADO PARA 100px E FORÇADO */
         font-weight: 800;
-        color: #F3C623;
+        color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
         /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
         text-shadow:
-            0 0 5px  #F3C623,
-            0 0 20px rgba(243, 198, 35, 0.8),
-            0 0 40px rgba(243, 198, 35, 0.6),
-            0 0 60px rgba(243, 198, 35, 0.4);
+            0 0 5px  #F3C623,  /* Brilho interno */
+            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
+            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
+            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
         text-align: center;
         line-height: 1.1;
         letter-spacing: 1px;
@@ -111,7 +111,7 @@ st.markdown("""
         transition: 0.3s;
         text-transform: uppercase;
         
-        /* ALTERAÇÃO: Força o botão a ser menor e centralizado */
+        /* Força o botão a ser menor e centralizado */
         width: 60% !important; 
         min-width: 250px !important; /* Tamanho mínimo para não quebrar texto */
         margin: 0 auto !important; 
@@ -230,7 +230,7 @@ def gerar_carta():
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL COM NEON MOSTARDA ---
+    # --- TELA INICIAL ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
@@ -240,12 +240,11 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2:
-        if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            with st.spinner('Sorteando...'):
-                gerar_carta()
-                st.rerun()
+    # Botão Centralizado via CSS (sem colunas para evitar bug de largura no mobile)
+    if st.button("✨ GERAR NOVA CARTA"):
+        with st.spinner('Sorteando...'):
+            gerar_carta()
+            st.rerun()
 
 else:
     c = st.session_state.carta
