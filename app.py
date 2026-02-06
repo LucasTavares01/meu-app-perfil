@@ -110,6 +110,12 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         transition: 0.3s;
         text-transform: uppercase;
+        
+        /* ALTERAÇÃO: Força o botão a ser menor e centralizado */
+        width: 60% !important; 
+        min-width: 250px !important; /* Tamanho mínimo para não quebrar texto */
+        margin: 0 auto !important; 
+        display: block !important;
     }
     .stButton > button:hover {
         background-position: right center;
