@@ -3,6 +3,7 @@ import google.generativeai as genai
 import json
 import re
 import traceback
+import time # Added for timestamps in logs
 
 # --- CONFIGURAÇÃO DE SEGURANÇA ---
 try:
@@ -15,6 +16,14 @@ try:
 except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
+
+# --- INITIALIZE LOGS ---
+if 'logs' not in st.session_state: st.session_state.logs = []
+
+def registrar_log(msg):
+    """Adds a message to the debug log without changing app logic."""
+    timestamp = time.strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{timestamp}] {msg}")
 
 # --- CSS (ESTILO VISUAL - MANTIDO EXATAMENTE IGUAL) ---
 st.markdown("""
@@ -51,7 +60,13 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
+        
+        /* AQUI ESTÁ O AJUSTE:
+           50px em cima (para descer da tela)
+           -20px em baixo (para puxar o título para perto) */
         margin: 50px auto -20px auto;
+        
+        /* Brilho ajustado para o tom mostarda */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -67,18 +82,19 @@ st.markdown("""
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
+        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
         text-shadow:
-            0 0 5px  #F3C623,
-            0 0 20px rgba(243, 198, 35, 0.8),
-            0 0 40px rgba(243, 198, 35, 0.6),
-            0 0 60px rgba(243, 198, 35, 0.4);
+            0 0 5px  #F3C623,  /* Brilho interno */
+            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
+            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
+            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
         text-align: center;
         line-height: 1.1;
         letter-spacing: 1px;
     }
     
     .subtitle {
-        font-size: 28px;
+        font-size: 28px; /* Levemente reduzido para bater com a referência */
         font-weight: 400;
         color: #ffffff;
         margin-top: 10px;
@@ -179,26 +195,37 @@ st.markdown("""
         font-size: 18px; 
         border-radius: 15px;
     }
+    
+    /* LOG STYLE */
+    .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 5px; margin-bottom: 2px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS (COM RESERVA) ---
+# --- ESTADOS (Adicionado 'reserva' para o buffer) ---
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'reserva' not in st.session_state: st.session_state.reserva = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
 
 # --- FUNÇÕES ---
 def get_model():
+    # Mantendo a sua lógica exata que funciona
     try:
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        if any('gemini-1.5-flash' in m for m in models): return genai.GenerativeModel('gemini-1.5-flash')
-        if any('gemini-2.5-flash' in m for m in models): return genai.GenerativeModel('gemini-2.5-flash')
+        if any('gemini-1.5-flash' in m for m in models): 
+            registrar_log("Modelo: gemini-1.5-flash")
+            return genai.GenerativeModel('gemini-1.5-flash')
+        if any('gemini-2.5-flash' in m for m in models): 
+            registrar_log("Modelo: gemini-2.5-flash")
+            return genai.GenerativeModel('gemini-2.5-flash')
+        registrar_log("Modelo: gemini-pro (fallback)")
         return genai.GenerativeModel('gemini-pro')
-    except:
+    except Exception as e:
+        registrar_log(f"Erro ao listar modelos: {e}")
         return genai.GenerativeModel('gemini-pro')
 
 def obter_dados_carta():
-    """Gera apenas os dados da carta, sem exibir."""
+    """Gera os dados da carta mas NÃO joga na tela. Retorna o JSON."""
+    registrar_log("Iniciando requisição API...")
     model = get_model()
     prompt = """
     Jogo 'Perfil 7'. Gere JSON.
@@ -214,17 +241,19 @@ def obter_dados_carta():
         text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', text, re.DOTALL)
         if match:
+            registrar_log("Sucesso: JSON recebido.")
             return json.loads(match.group())
         else:
+            registrar_log(f"Erro: JSON inválido. Texto: {text[:50]}...")
             return None
-    except Exception:
+    except Exception as e:
+        registrar_log(f"ERRO CRÍTICO API: {e}")
         return None
 
 # --- INTERFACE ---
 
-# 1. TELA INICIAL
 if not st.session_state.carta:
-    # --- VISUAL TELA INICIAL ---
+    # --- TELA INICIAL ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
@@ -234,30 +263,22 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
+    # Mantendo a estrutura de colunas que deixa o botão centralizado e do tamanho certo
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            # LÓGICA DO FLUXO PERFEITO:
-            
-            # CENÁRIO A: Já temos uma carta guardada (Fluxo Rápido)
-            if st.session_state.reserva:
-                st.session_state.carta = st.session_state.reserva
-                st.session_state.reserva = None # Esvazia para forçar recarga no background
-                st.session_state.revelado = False
-                st.rerun() # Abre a carta imediatamente
-            
-            # CENÁRIO B: Primeira vez ou buffer vazio (Fluxo Inicial)
-            else:
-                with st.spinner('Criando baralho inicial (isso só acontece agora)...'):
-                    st.session_state.carta = obter_dados_carta()   # Carta Atual
-                    st.session_state.reserva = obter_dados_carta() # Carta para depois
-                    
-                    if st.session_state.carta:
-                        st.rerun()
-                    else:
-                        st.error("Erro ao conectar com a IA. Tente novamente.")
+            registrar_log("Botão Iniciar Clicado")
+            with st.spinner('Inicializando e criando estoque de cartas...'):
+                # GERA DUAS CARTAS NA PRIMEIRA VEZ (A atual e a reserva)
+                st.session_state.carta = obter_dados_carta()
+                registrar_log("Gerando reserva inicial...")
+                st.session_state.reserva = obter_dados_carta()
+                
+                if st.session_state.carta: # Se deu certo pelo menos uma
+                    st.rerun()
+                else:
+                    st.error("Erro ao conectar com a IA. Tente novamente.")
 
-# 2. TELA DO JOGO
 else:
     c = st.session_state.carta
     
@@ -291,16 +312,38 @@ else:
     
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
-        # AQUI ESTÁ A MUDANÇA DO FLUXO:
-        # Este botão agora apenas VOLTA para a tela inicial
+        # BOTÃO COM LÓGICA DE BUFFER
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            st.session_state.carta = None # Limpa a carta atual (volta pra home)
-            st.rerun()
+            registrar_log("Botão Nova Carta Clicado")
+            if st.session_state.reserva:
+                # Usa a carta que já estava pronta (INSTANTÂNEO)
+                registrar_log("Usando Reserva.")
+                st.session_state.carta = st.session_state.reserva
+                st.session_state.reserva = None # Esvazia a reserva para forçar recarga
+                st.session_state.revelado = False
+                st.rerun()
+            else:
+                # Se não tiver reserva (ex: erro de conexão no background), gera na hora
+                registrar_log("Reserva vazia. Gerando na hora...")
+                with st.spinner("Gerando carta..."):
+                    st.session_state.carta = obter_dados_carta()
+                    st.session_state.revelado = False
+                    st.rerun()
 
     # --- RECARGA DE BUFFER EM BACKGROUND ---
-    # O código abaixo roda DEPOIS de desenhar a tela do jogo.
-    # Se a reserva estiver vazia, ele aproveita que o jogador está lendo para criar a próxima.
+    # Isso roda silenciosamente DEPOIS de mostrar a carta atual.
+    # Assim, enquanto você joga, a próxima carta está sendo criada.
     if st.session_state.carta and st.session_state.reserva is None:
+        registrar_log("Iniciando recarga de background...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
+            registrar_log("Buffer recarregado!")
+
+# --- PAINEL DE LOGS (DEBUG) ---
+st.divider()
+with st.expander("🛠️ Logs do Sistema (Debug)"):
+    if not st.session_state.logs:
+        st.write("Nenhum log registrado.")
+    for log_item in st.session_state.logs[-15:]: # Mostra os ultimos 15
+        st.markdown(f"<div class='log-text'>{log_item}</div>", unsafe_allow_html=True)
