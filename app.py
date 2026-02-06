@@ -158,7 +158,6 @@ def registrar_log(msg):
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
 def verificar_similaridade(nova_resposta):
-    """Verifica se a resposta já saiu"""
     nova = nova_resposta.lower().strip()
     for usada in st.session_state.used_answers:
         usada_clean = usada.lower().strip()
@@ -170,7 +169,6 @@ def verificar_similaridade(nova_resposta):
     return False
 
 def selecionar_dicas_sem_spoiler(todas_dicas, resposta):
-    """Filtra dicas com spoiler e descarta a frase inteira."""
     palavras_proibidas = [p for p in resposta.lower().split() if len(p) > 3]
     dicas_aprovadas = []
     
@@ -194,17 +192,16 @@ def selecionar_dicas_sem_spoiler(todas_dicas, resposta):
             dicas_aprovadas.append(dica)
             
     while len(dicas_aprovadas) < 20:
-        dicas_aprovadas.append(f"{len(dicas_aprovadas)+1}. Fato adicional sobre este tema.")
+        dicas_aprovadas.append(f"{len(dicas_aprovadas)+1}. Fato adicional verificado sobre este tema.")
         
     return dicas_aprovadas
 
-# --- LÓGICA DE GERAÇÃO (TURBO) ---
+# --- LÓGICA DE GERAÇÃO (FACT-CHECKING) ---
 def obter_dados_carta():
     tentativas = 0
     max_tentativas = 3 
     
     while tentativas < max_tentativas:
-        # 1. Sorteio do Tema
         temas_possiveis = ["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"]
         tema_sorteado = random.choice(temas_possiveis)
         
@@ -212,38 +209,51 @@ def obter_dados_carta():
         
         registrar_log(f"Tentativa {tentativas+1}: '{tema_sorteado}'.")
         
-        # 2. CONFIGURAÇÃO DO PROMPT E TEMPERATURA POR TEMA
+        # 2. PROMPTS ESPECÍFICOS PARA EVITAR ALUCINAÇÃO
         if tema_sorteado == "ANO":
-            # Temperatura BAIXA para fatos históricos (evita alucinação)
-            temp_model = 0.1 
+            # REGRAS RÍGIDAS PARA ANOS
             prompt_especifico = """
-            ATENÇÃO MÁXIMA - MODO HISTORIADOR RIGOROSO:
-            - A RESPOSTA deve ser UM ANO de 4 dígitos (Ex: 1994, 2001, 1500).
-            - TODAS as dicas devem ser eventos que ocorreram EXATAMENTE neste ano.
-            - SE O EVENTO NÃO ACONTECEU NESSE ANO, NÃO O INCLUA.
-            - Verifique duas vezes: Aconteceu neste ano ou na década? Se for década, DESCARTE.
-            - Use: "Neste ano nasceu...", "Neste ano foi lançado...", "Neste ano ocorreu a batalha...".
-            - PROIBIDO: Usar fatos científicos genéricos (velocidade da luz, pi, etc) que não mudam com o ano.
+            DIRETRIZES OBRIGATÓRIAS PARA 'ANO':
+            1. A RESPOSTA deve ser um ANO NUMÉRICO DE 4 DÍGITOS (Ex: 1994, 1822).
+            2. TODAS as dicas devem ser eventos que ocorreram EXATAMENTE neste ano.
+            3. PROIBIDO: Usar fatos matemáticos ("x é raiz de y"), astronômicos genéricos ou científicos abstratos.
+            4. PROIBIDO: Misturar décadas. Se aconteceu em 1968, NÃO serve para 1969.
+            5. Use: Lançamento de filmes específicos, nascimento/morte de pessoas famosas, tratados assinados, invenções patenteadas.
+            6. VERIFIQUE SE O FATO É REALMENTE DAQUELE ANO. Se tiver dúvida, não use.
+            """
+        elif tema_sorteado == "DIGITAL":
+            prompt_especifico = """
+            DIRETRIZES OBRIGATÓRIAS PARA 'DIGITAL' (Empresas/Tech):
+            1. VERIFIQUE AS DATAS DE FUNDAÇÃO. Não chute. (Ex: Google é 1998, não 1991).
+            2. NÃO confunda fundadores (Ex: Bill Gates não fundou a Apple).
+            3. Use fatos sobre: Sede exata, número real de usuários, produtos principais, aquisições famosas.
+            4. Evite clichês de marketing ("Revolucionou o mundo"). Use fatos ("Criou o algoritmo PageRank").
+            """
+        elif tema_sorteado == "LUGAR":
+            prompt_especifico = """
+            DIRETRIZES OBRIGATÓRIAS PARA 'LUGAR':
+            1. PROIBIDO: "Tem praias bonitas", "É turístico", "Pessoas gostam". (Isso serve para qualquer lugar).
+            2. OBRIGATÓRIO: Dados geográficos (fronteiras, hemisfério), dados econômicos (principal exportação), fatos históricos concretos (quem colonizou, ano de independência).
+            3. Se for um país, mencione a moeda, a capital (sem dizer que é a capital no começo), ou a língua oficial.
             """
         else:
-            # Temperatura MÉDIA para criatividade descritiva
-            temp_model = 0.7
             prompt_especifico = """
-            DIRETRIZES PARA PESSOA/LUGAR/DIGITAL/COISA:
-            - Evite respostas óbvias (Mesa, Cadeira).
-            - Use curiosidades específicas, materiais, localização exata, biografia.
-            - Nada de "É muito famoso" ou "Existe há muito tempo".
+            DIRETRIZES PARA PESSOA/COISA:
+            1. Evite o óbvio.
+            2. Se for PESSOA: Data de nascimento, cidade natal, obras específicas, prêmios ganhos.
+            3. Se for COISA: Material químico, ano de invenção, inventor específico.
             """
 
         prompt = f"""
-        Você é o criador oficial do jogo 'Perfil'.
+        Você é um AUDITOR DE FATOS e verificador de enciclopédia. Não seja criativo, SEJA PRECISO.
         
         TAREFA: Criar carta para o tema: "{tema_sorteado}".
         {prompt_especifico}
         
         REGRAS GERAIS:
-        1. GERE 25 DICAS (para que eu possa descartar as que tiverem spoiler).
+        1. GERE 25 DICAS.
         2. A resposta NÃO PODE aparecer no texto das dicas.
+        3. DICAS DEVEM SER 100% VERDADEIRAS. Mentiras ou "chutes" resultam em falha crítica.
         
         PROIBIDO REPETIR: {proibidos_str}
         
@@ -259,10 +269,11 @@ def obter_dados_carta():
             completion = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[
-                    {"role": "system", "content": "Você é um banco de dados de fatos verificados. Você não inventa datas."},
+                    {"role": "system", "content": "Você é um especialista em Trivia. Você verifica cada fato antes de escrever. Você odeia erros históricos."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=temp_model, # Varia conforme o tema!
+                # TEMPERATURA 0.1: CRIATIVIDADE QUASE ZERO, FOCO EM FATOS
+                temperature=0.1, 
                 max_tokens=1800,
                 top_p=1,
                 stream=False,
@@ -272,27 +283,23 @@ def obter_dados_carta():
             content = completion.choices[0].message.content
             dados = json.loads(content)
             
-            # Ajustes Finais
             dados["tema"] = tema_sorteado
             resposta_atual = dados["resposta"]
             
-            # Anti-Repetição
             if verificar_similaridade(resposta_atual):
                 tentativas += 1
                 continue 
             
-            # Limpeza de Ano
             if tema_sorteado == "ANO":
                 apenas_numeros = re.sub("[^0-9]", "", str(resposta_atual))
                 if len(apenas_numeros) == 4:
                     dados["resposta"] = apenas_numeros
                 else:
                     tentativas += 1
-                    continue # Ano inválido, tenta de novo
+                    continue
 
             st.session_state.used_answers.append(resposta_atual)
             
-            # Filtragem
             dicas_brutas = dados.get('dicas', [])
             dicas_filtradas = selecionar_dicas_sem_spoiler(dicas_brutas, resposta_atual)
             
@@ -308,14 +315,14 @@ def obter_dados_carta():
                         dicas_finais.append("2. PERCA A VEZ") 
                         tem_perca = True
                     else:
-                        dicas_finais.append(f"{len(dicas_finais)+1}. Curiosidade extra sobre o tema.")
+                        dicas_finais.append(f"{len(dicas_finais)+1}. Outro fato verificado sobre {resposta_atual}.")
                         
                 elif "PALPITE" in d_upper:
                     if not tem_palpite:
                         dicas_finais.append("6. UM PALPITE A QUALQUER HORA")
                         tem_palpite = True
                     else:
-                        dicas_finais.append(f"{len(dicas_finais)+1}. Fato histórico sobre o tema.")
+                        dicas_finais.append(f"{len(dicas_finais)+1}. Detalhe histórico sobre {resposta_atual}.")
                 else:
                     dicas_finais.append(dica)
             
@@ -354,7 +361,7 @@ if not st.session_state.carta:
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                with st.spinner('Pesquisando fatos históricos e curiosidades...'):
+                with st.spinner('Auditando fatos históricos...'):
                     st.session_state.carta = obter_dados_carta()
                     if st.session_state.carta:
                         st.session_state.reserva = obter_dados_carta()
@@ -402,7 +409,7 @@ else:
 
     # Recarga em background
     if st.session_state.carta and st.session_state.reserva is None:
-        registrar_log("Gerando próxima carta no background...")
+        registrar_log("Criando próxima (Auditoria em andamento)...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
