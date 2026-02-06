@@ -10,10 +10,8 @@ try:
     if "GROQ_API_KEY" in st.secrets:
         api_key = st.secrets["GROQ_API_KEY"]
     else:
-        # Fallback para rodar local se não estiver nos secrets
         api_key = "COLOQUE_SUA_KEY_AQUI_SE_ESTIVER_RODANDO_LOCAL" 
     
-    # Inicializa o cliente da Groq
     client = Groq(api_key=api_key)
 except Exception:
     st.error("ERRO: Configure sua chave 'GROQ_API_KEY' no painel 'Secrets' do Streamlit.")
@@ -24,7 +22,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
 
-    /* Fundo Mágico */
     .stApp {
         background: rgb(40,15,65);
         background: linear-gradient(135deg, rgba(40,15,65,1) 0%, rgba(86,22,86,1) 30%, rgba(186,75,35,1) 65%, rgba(232,183,77,1) 100%);
@@ -36,16 +33,14 @@ st.markdown("""
     #MainMenu, footer, header {visibility: hidden;}
     .main .block-container { padding-top: 2rem; }
 
-    /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
         justify-content: center;
-        color: #F3C623; /* Ajustado para o mostarda */
+        color: #F3C623;
         font-weight: bold;
         margin-top: 10px;
         margin-bottom: 10px;
     }
 
-    /* --- TELA DE BOAS-VINDAS (NEON MOSTARDA) --- */
     .welcome-box {
         text-align: center;
         padding: 10px;
@@ -64,17 +59,12 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
         font-size: 100px !important; 
         font-weight: 800;
-        color: #F3C623; /* Amarelo Mostarda Vibrante */
+        color: #F3C623;
         margin: 0;
-        text-shadow:
-            0 0 5px  #F3C623,
-            0 0 20px rgba(243, 198, 35, 0.8),
-            0 0 40px rgba(243, 198, 35, 0.6),
-            0 0 60px rgba(243, 198, 35, 0.4);
+        text-shadow: 0 0 5px #F3C623, 0 0 20px rgba(243, 198, 35, 0.8), 0 0 40px rgba(243, 198, 35, 0.6), 0 0 60px rgba(243, 198, 35, 0.4);
         text-align: center;
         line-height: 1.1;
         letter-spacing: 1px;
@@ -98,7 +88,6 @@ st.markdown("""
         line-height: 1.5;
     }
 
-    /* --- BOTÃO DOURADO --- */
     .stButton > button {
         background: linear-gradient(90deg, #ff9f43, #feca57, #ff9f43);
         background-size: 200% auto;
@@ -124,7 +113,6 @@ st.markdown("""
         background-color: #feca57;
     }
 
-    /* --- ESTILO DAS CARTAS --- */
     .card-theme-box {
         background: #ffffff;
         padding: 20px;
@@ -147,43 +135,11 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    .hint-row { 
-        border-bottom: 1px solid #e0e0e0; 
-        padding: 12px 5px; 
-        font-family: 'Montserrat', sans-serif; 
-        font-size: 16px; 
-        font-weight: 700; 
-        color: #1e272e;
-        line-height: 1.4;
-    }
+    .hint-row { border-bottom: 1px solid #e0e0e0; padding: 12px 5px; font-family: 'Montserrat', sans-serif; font-size: 16px; font-weight: 700; color: #1e272e; line-height: 1.4; }
+    .special-loss { background-color: #ff7675; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .special-guess { background-color: #2ed573; color: white !important; padding: 12px; border-radius: 8px; border: none; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .stSuccess { text-align: center; font-weight: bold; font-size: 18px; border-radius: 15px; }
     
-    .special-loss { 
-        background-color: #ff7675; 
-        color: white !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        border: none; 
-        text-align: center; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-    }
-    .special-guess { 
-        background-color: #2ed573; 
-        color: white !important; 
-        padding: 12px; 
-        border-radius: 8px; 
-        border: none; 
-        text-align: center; 
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
-    }
-    
-    .stSuccess { 
-        text-align: center; 
-        font-weight: bold; 
-        font-size: 18px; 
-        border-radius: 15px;
-    }
-    
-    /* LOG STYLE */
     .log-text { font-family: monospace; font-size: 12px; color: #00ff00; background: black; padding: 5px; margin-bottom: 2px; }
     </style>
     """, unsafe_allow_html=True)
@@ -198,55 +154,53 @@ def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
-# --- LÓGICA DE GERAÇÃO (VIA GROQ) ---
+# --- LÓGICA DE GERAÇÃO (TURBO) ---
 def obter_dados_carta():
-    """Gera carta usando Groq (Llama 3.3)"""
-    registrar_log("Iniciando requisição Groq...")
+    registrar_log("Iniciando requisição Groq (Modo Criativo)...")
     
-    # PROMPT AJUSTADO PARA EVITAR REPETIÇÕES
+    # AQUI ESTÁ A MÁGICA PARA MELHORAR AS PALAVRAS
     prompt = """
-    Você é um gerador de cartas para o jogo 'Perfil 7'.
-    Sua tarefa é gerar um JSON com:
-    1. TEMA: Escolha entre "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
-    2. RESPOSTA: O nome do que será adivinhado.
-    3. DICAS: Gere uma lista exata de 20 dicas sobre a resposta (ordem de dificuldade aleatória).
-
-    REGRAS CRÍTICAS PARA ITENS ESPECIAIS:
-    - Existe 30% de chance TOTAL de aparecer 'PERCA A VEZ'.
-    - Existe 30% de chance TOTAL de aparecer 'UM PALPITE A QUALQUER HORA'.
-    - IMPORTANTE: Se o item especial aparecer, ele deve aparecer APENAS UMA VEZ na lista inteira.
-    - NUNCA repita 'PERCA A VEZ'. Máximo 1 por carta.
-    - NUNCA repita 'UM PALPITE A QUALQUER HORA'. Máximo 1 por carta.
+    Você é um Mestre de Jogos de Trivia (Perfil).
+    Sua missão é gerar uma carta desafiadora e interessante para adultos.
     
-    Responda APENAS com o JSON, sem markdown.
-    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+    DIRETRIZES DE CONTEÚDO (CRUCIAL):
+    1. EVITE O ÓBVIO: Nunca use palavras simples do dia a dia como "Casa", "Televisão", "Cama", "Cachorro", "Praia".
+    2. SEJA ESPECÍFICO:
+       - Se for LUGAR: Use "Coliseu", "Machu Picchu", "Chernobyl", "Triângulo das Bermudas".
+       - Se for PESSOA: Use "Napoleão Bonaparte", "Frida Kahlo", "Darth Vader", "Pelé".
+       - Se for COISA: Use "Máquina do Tempo", "Monalisa", "Bitcoin", "Pedra de Roseta".
+       - Se for ANO: Use datas históricas impactantes (ex: 1969, 1500, 2001).
+    3. DIFICULDADE: As primeiras dicas devem ser vagas e difíceis. As últimas devem entregar a resposta.
+
+    ESTRUTURA OBRIGATÓRIA:
+    - 20 Dicas no total.
+    - 30% de chance de ter 1 item 'PERCA A VEZ' (Máximo 1).
+    - 30% de chance de ter 1 item 'UM PALPITE A QUALQUER HORA' (Máximo 1).
+    
+    Retorne APENAS o JSON válido.
+    FORMATO JSON: {"tema": "CATEGORIA", "dicas": ["1. Dica difícil...", "2. Dica...", ...], "resposta": "RESPOSTA ESPECÍFICA"}
     """
     
     try:
         completion = client.chat.completions.create(
-            # Modelo Llama 3.3 70B (Versátil e Inteligente)
             model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "Você é uma API JSON. Responda apenas JSON válido."},
+                {"role": "system", "content": "Você é uma API JSON criativa."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7, # Temperatura um pouco mais baixa ajuda a seguir regras
+            temperature=0.85, # Aumentei um pouco para ter mais criatividade
             max_tokens=1024,
             top_p=1,
             stream=False,
             response_format={"type": "json_object"}
         )
         
-        # Pega o texto da resposta
         content = completion.choices[0].message.content
-        registrar_log("Resposta recebida da Groq.")
         
-        # Parse do JSON
         try:
             dados = json.loads(content)
             
-            # --- VALIDAÇÃO EXTRA DE SEGURANÇA (PYTHON) ---
-            # Caso a IA teime em repetir, vamos limpar via código antes de mostrar
+            # --- HIGIENIZAÇÃO (Garante que não repete especiais) ---
             dicas_limpas = []
             tem_perca = False
             tem_palpite = False
@@ -258,21 +212,19 @@ def obter_dados_carta():
                         dicas_limpas.append(dica)
                         tem_perca = True
                     else:
-                        # Se já tem, substitui por uma dica genérica
-                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica extra sobre {dados['resposta']}")
+                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica curiosa sobre {dados['resposta']}")
                 elif "PALPITE" in d_upper:
                     if not tem_palpite:
                         dicas_limpas.append(dica)
                         tem_palpite = True
                     else:
-                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Dica extra sobre {dados['resposta']}")
+                        dicas_limpas.append(f"{len(dicas_limpas)+1}. Fato interessante sobre {dados['resposta']}")
                 else:
                     dicas_limpas.append(dica)
             
-            # Atualiza as dicas limpas
-            dados['dicas'] = dicas_limpas[:20] # Garante 20
+            dados['dicas'] = dicas_limpas[:20]
             
-            registrar_log("JSON validado e higienizado!")
+            registrar_log(f"Carta gerada: {dados['resposta']} ({dados['tema']})")
             return dados
             
         except json.JSONDecodeError:
@@ -280,11 +232,10 @@ def obter_dados_carta():
             if match:
                 return json.loads(match.group())
             else:
-                registrar_log(f"Erro de parse no JSON: {content[:50]}...")
                 return None
                 
     except Exception as e:
-        registrar_log(f"ERRO CRÍTICO GROQ: {e}")
+        registrar_log(f"ERRO API: {e}")
         return None
 
 # --- INTERFACE ---
@@ -303,7 +254,7 @@ if not st.session_state.carta:
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
-            registrar_log("Botão Iniciar Clicado")
+            registrar_log("Iniciando jogo...")
             
             if st.session_state.reserva:
                 st.session_state.carta = st.session_state.reserva
@@ -311,14 +262,13 @@ if not st.session_state.carta:
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                with st.spinner('Conectando à Groq e criando cartas...'):
+                with st.spinner('Criando cartas desafiadoras...'):
                     st.session_state.carta = obter_dados_carta()
                     if st.session_state.carta:
-                        registrar_log("Gerando reserva...")
                         st.session_state.reserva = obter_dados_carta()
                         st.rerun()
                     else:
-                        st.error("Erro ao conectar com a Groq. Veja os logs abaixo.")
+                        st.error("Erro ao conectar. Veja os logs.")
 
 else:
     c = st.session_state.carta
@@ -354,17 +304,17 @@ else:
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            registrar_log("Voltando para tela inicial...")
+            registrar_log("Voltando para o início...")
             st.session_state.carta = None
             st.rerun()
 
     # Recarga em background
     if st.session_state.carta and st.session_state.reserva is None:
-        registrar_log("Recarregando buffer (Groq)...")
+        registrar_log("Gerando próxima carta no background...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
-            registrar_log("Buffer pronto!")
+            registrar_log("Próxima carta pronta!")
 
 # --- PAINEL DE LOGS ---
 st.divider()
