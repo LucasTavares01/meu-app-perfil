@@ -21,7 +21,7 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
 
-    /* Fundo Mágico (Roxo/Laranja/Dourado) */
+    /* Fundo Mágico */
     .stApp {
         background: rgb(40,15,65);
         background: linear-gradient(135deg, rgba(40,15,65,1) 0%, rgba(86,22,86,1) 30%, rgba(186,75,35,1) 65%, rgba(232,183,77,1) 100%);
@@ -33,7 +33,7 @@ st.markdown("""
     #MainMenu, footer, header {visibility: hidden;}
     .main .block-container { padding-top: 2rem; }
 
-    /* Centralizar Spinner (Carregando...) */
+    /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
         justify-content: center;
         color: #FFD700;
@@ -42,16 +42,16 @@ st.markdown("""
         margin-bottom: 10px;
     }
 
-    /* --- TELA DE BOAS-VINDAS --- */
+    /* --- TELA DE BOAS-VINDAS (AJUSTADA) --- */
     .welcome-box {
         text-align: center;
-        padding: 20px;
-        margin-bottom: 20px;
+        padding: 10px;
+        margin-bottom: 30px;
     }
     .golden-dice-icon {
         width: 140px;
         display: block;
-        margin: 0 auto 20px auto;
+        margin: 0 auto 25px auto;
         filter: drop-shadow(0 0 25px rgba(255, 215, 0, 0.6));
         animation: floater 3s ease-in-out infinite;
     }
@@ -60,23 +60,35 @@ st.markdown("""
         50% { transform: translateY(-12px); }
         100% { transform: translateY(0px); }
     }
+    
+    /* Título Principal - Agora "Perfil 7" e não "PERFIL 7" */
     .main-title {
-        font-size: 55px;
+        font-size: 60px;
         font-weight: 800;
-        color: #FFD700;
-        text-transform: uppercase;
+        color: #FFD700; /* Dourado */
+        /* text-transform: uppercase; REMOVIDO para aceitar letras minúsculas */
         margin: 0;
         text-shadow: 4px 4px 0px #8e44ad, 0 0 30px rgba(255, 215, 0, 0.5);
         text-align: center;
-        line-height: 1.1;
+        line-height: 1.2;
     }
+    
     .subtitle {
-        font-size: 24px;
-        font-weight: 600;
+        font-size: 32px; /* Um pouco maior como na referência */
+        font-weight: 400; /* Mais leve para contrastar com o título */
         color: #ffffff;
-        margin-top: 10px;
+        margin-top: 5px;
+        margin-bottom: 30px;
         text-shadow: 0 2px 5px rgba(0,0,0,0.5);
         text-align: center;
+    }
+    
+    .description {
+        font-size: 16px;
+        color: #e0e0e0;
+        max-width: 400px;
+        margin: 0 auto;
+        line-height: 1.5;
     }
 
     /* --- BOTÃO DOURADO --- */
@@ -99,15 +111,13 @@ st.markdown("""
         box-shadow: 0 10px 25px rgba(255, 200, 0, 0.4);
         color: #000;
     }
-    /* Quando clicado (active) */
     .stButton > button:active {
         color: #5d2e01;
         border-color: #fff200;
         background-color: #feca57;
     }
 
-    /* --- ESTILO DAS CARTAS --- */
-    /* Bloco do TEMA (Topo) */
+    /* --- ESTILO DAS CARTAS (MANTIDO PERFEITO) --- */
     .card-theme-box {
         background: #ffffff;
         padding: 20px;
@@ -120,7 +130,6 @@ st.markdown("""
     .header-label { font-size: 12px; color: #95a5a6; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;}
     .theme-value { font-size: 32px; color: #2c3e50; font-weight: 900; text-transform: uppercase; margin: 0; line-height: 1; }
 
-    /* Bloco das DICAS (Lista Completa) */
     .card-tips-box {
         background: #ffffff;
         padding: 10px 20px;
@@ -131,18 +140,16 @@ st.markdown("""
         margin-bottom: 20px;
     }
 
-    /* ESTILO DO TEXTO DAS DICAS - AGORA BEM LEGÍVEL */
     .hint-row { 
         border-bottom: 1px solid #e0e0e0; 
         padding: 12px 5px; 
         font-family: 'Montserrat', sans-serif; 
         font-size: 16px; 
-        font-weight: 700; /* Negrito forte */
-        color: #1e272e;   /* Azul escuro quase preto */
+        font-weight: 700; 
+        color: #1e272e;
         line-height: 1.4;
     }
     
-    /* Destaques Especiais */
     .special-loss { 
         background-color: #ff7675; 
         color: white !important; 
@@ -162,7 +169,6 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
     }
     
-    /* Resposta Final */
     .stSuccess { 
         text-align: center; 
         font-weight: bold; 
@@ -212,16 +218,16 @@ def gerar_carta():
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL ---
+    # --- TELA INICIAL AJUSTADA ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
-            <h1 class="main-title">PERFIL 7</h1>
+            <h1 class="main-title">Perfil 7</h1>
             <div class="subtitle">Bem-vindo!</div>
+            <div class="description">Clique abaixo para gerar uma nova carta com Inteligência Artificial.</div>
         </div>
     """, unsafe_allow_html=True)
     
-    # Botão Centralizado com COLUNAS
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
@@ -232,7 +238,6 @@ if not st.session_state.carta:
 else:
     c = st.session_state.carta
     
-    # 1. CARTÃO DE TEMA (HTML Puro)
     st.markdown(f"""
     <div class="card-theme-box">
         <div class="header-label">DIGA AOS JOGADORES QUE SOU UM(A):</div>
@@ -240,7 +245,6 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    # 2. BOTÃO REVELAR (Centralizado)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("👁️ REVELAR RESPOSTA", use_container_width=True): 
@@ -249,7 +253,6 @@ else:
     if st.session_state.revelado:
         st.success(f"🏆 {c.get('resposta')}")
 
-    # 3. CARTÃO DE DICAS (Montamos o HTML inteiro aqui para garantir o fundo branco)
     tips_html = '<div class="card-tips-box">'
     for dica in c.get('dicas', []):
         d_up = dica.upper()
@@ -261,10 +264,8 @@ else:
             tips_html += f"<div class='hint-row'>{dica}</div>"
     tips_html += '</div>'
     
-    # Renderiza todas as dicas de uma vez (Isso conserta o bug visual)
     st.markdown(tips_html, unsafe_allow_html=True)
     
-    # 4. BOTÃO NOVA CARTA (Embaixo)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("🔄 NOVA CARTA", use_container_width=True):
