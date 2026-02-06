@@ -168,49 +168,11 @@ def verificar_similaridade(nova_resposta):
             return True
     return False
 
-# --- FUNÇÃO MESTRA DE CHAMADA API (FALLBACK AUTOMÁTICO) ---
-def chamar_ia(messages, temperature=0.7, max_tokens=1500):
-    """
-    Tenta chamar a API usando modelos em ordem de preferência.
-    Se um der erro de cota (429), pula para o próximo.
-    """
-    modelos = [
-        "llama-3.3-70b-versatile", # O Melhor (mas limite de 100k/dia)
-        "llama-3.1-8b-instant",    # O Rápido (limite separado/alto)
-        "mixtral-8x7b-32768"       # O Backup
-    ]
-    
-    for modelo in modelos:
-        try:
-            # registrar_log(f"Tentando modelo: {modelo}...") # Opcional: comentar para limpar log
-            completion = client.chat.completions.create(
-                model=modelo,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                top_p=1,
-                stream=False,
-                response_format={"type": "json_object"}
-            )
-            return completion.choices[0].message.content
-            
-        except Exception as e:
-            if "429" in str(e):
-                registrar_log(f"⚠️ Cota estourada no {modelo}. Trocando motor...")
-                continue # Tenta o próximo modelo do loop
-            else:
-                registrar_log(f"Erro no {modelo}: {e}")
-                # Se for outro erro (não cota), talvez valha a pena tentar o próximo também
-                continue
-                
-    registrar_log("❌ FALHA TOTAL: Todos os modelos falharam.")
-    return None
-
 # --- FUNÇÕES DE GERAÇÃO INTELIGENTE ---
 
 def gerar_dicas_complementares(resposta, quantidade_necessaria, tema):
     """Gera dicas EXTRAS quando a auditoria cortou muitas."""
-    registrar_log(f"Gerando {quantidade_necessaria} dicas extras...")
+    registrar_log(f"⚠️ Gerando {quantidade_necessaria} dicas extras para '{resposta}'...")
     
     prompt_rescue = f"""
     Estou criando um jogo sobre: {resposta} (Tema: {tema}).
@@ -225,16 +187,18 @@ def gerar_dicas_complementares(resposta, quantidade_necessaria, tema):
     Retorne JSON: {{"dicas_extras": ["fato 1", "fato 2" ...]}}
     """
     
-    messages = [{"role": "user", "content": prompt_rescue}]
-    content = chamar_ia(messages, temperature=0.2)
-    
-    if content:
-        try:
-            dados = json.loads(content)
-            return dados.get("dicas_extras", [])
-        except:
-            return []
-    return []
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt_rescue}],
+            temperature=0.2,
+            response_format={"type": "json_object"}
+        )
+        content = completion.choices[0].message.content
+        dados = json.loads(content)
+        return dados.get("dicas_extras", [])
+    except:
+        return []
 
 def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
     """Auditoria rigorosa para anos"""
@@ -250,17 +214,18 @@ def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
     
     JSON: {{"dicas_aprovadas": ["dica1", "dica2"]}}
     """
-    
-    messages = [{"role": "user", "content": prompt_auditoria}]
-    content = chamar_ia(messages, temperature=0.0)
-    
-    if content:
-        try:
-            dados = json.loads(content)
-            return dados.get("dicas_aprovadas", [])
-        except:
-            return []
-    return []
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt_auditoria}],
+            temperature=0.0,
+            response_format={"type": "json_object"}
+        )
+        content = completion.choices[0].message.content
+        dados = json.loads(content)
+        return dados.get("dicas_aprovadas", [])
+    except:
+        return []
 
 def obter_dados_carta():
     tentativas = 0
@@ -294,14 +259,15 @@ def obter_dados_carta():
         JSON: {{"tema": "{tema_sorteado}", "dicas": ["..."], "resposta": "NOME"}}
         """
         
-        messages = [{"role": "user", "content": prompt}]
-        content = chamar_ia(messages, temperature=temp_model, max_tokens=1800)
-        
-        if not content:
-            tentativas += 1; continue
-
         try:
-            dados = json.loads(content)
+            # 1. GERAÇÃO INICIAL
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=temp_model,
+                response_format={"type": "json_object"}
+            )
+            dados = json.loads(completion.choices[0].message.content)
             resposta_atual = dados["resposta"]
             dicas_iniciais = dados.get("dicas", [])
             
@@ -327,47 +293,53 @@ def obter_dados_carta():
                     dicas_sem_spoiler.append(d)
 
             # --- PREENCHIMENTO INTELIGENTE (LOOP DE CORREÇÃO) ---
+            # Se tivermos menos de 20 dicas boas, pedimos mais para a IA
             ciclos_rescue = 0
             while len(dicas_sem_spoiler) < 20 and ciclos_rescue < 3:
-                faltam = 22 - len(dicas_sem_spoiler) 
+                faltam = 22 - len(dicas_sem_spoiler) # Pede um pouco a mais
                 novas_dicas = gerar_dicas_complementares(resposta_atual, faltam, tema_sorteado)
                 
+                # Filtra as novas também
                 for nd in novas_dicas:
                     if not any(p in nd.lower() for p in palavras_proibidas):
                         dicas_sem_spoiler.append(nd)
                 
                 ciclos_rescue += 1
             
+            # Se mesmo assim não deu 20, descarta a carta e tenta outro tema
             if len(dicas_sem_spoiler) < 18: 
                 registrar_log("Falha ao completar 20 dicas reais. Tentando outra carta.")
                 tentativas += 1; continue
 
-            # FORMATAÇÃO FINAL
+            # FORMATAÇÃO FINAL (Itens Especiais)
             dicas_finais = []
             tem_perca = False
             tem_palpite = False
             
+            # Pega as primeiras 20 (ou o que tiver)
             pool_dicas = dicas_sem_spoiler[:22]
             
             for i, dica in enumerate(pool_dicas):
                 if len(dicas_finais) >= 20: break
                 
-                if i == 1 and not tem_perca: 
+                # Insere itens especiais nas posições estratégicas (ex: 2 e 12)
+                if i == 1 and not tem_perca: # Posição 2
                     dicas_finais.append("2. PERCA A VEZ")
                     tem_perca = True
-                elif i == 11 and not tem_palpite: 
+                elif i == 11 and not tem_palpite: # Posição 12
                     dicas_finais.append("12. UM PALPITE A QUALQUER HORA")
                     tem_palpite = True
                 else:
                     dicas_finais.append(dica)
             
+            # Ajuste final de tamanho
             dados['dicas'] = dicas_finais[:20]
             st.session_state.used_answers.append(resposta_atual)
             registrar_log(f"CARTA PRONTA: {resposta_atual}")
             return dados
 
         except Exception as e:
-            registrar_log(f"Erro de processamento: {e}")
+            registrar_log(f"Erro: {e}")
             tentativas += 1
 
     return None
@@ -394,7 +366,7 @@ if not st.session_state.carta:
                 st.session_state.revelado = False
                 st.rerun()
             else:
-                with st.spinner('Pesquisando fatos (Motor Híbrido)...'):
+                with st.spinner('Auditando fatos históricos...'):
                     st.session_state.carta = obter_dados_carta()
                     if st.session_state.carta:
                         st.session_state.reserva = obter_dados_carta()
@@ -440,7 +412,7 @@ else:
             st.rerun()
 
     if st.session_state.carta and st.session_state.reserva is None:
-        registrar_log("Criando próxima (Motor Híbrido)...")
+        registrar_log("Criando próxima (Auditoria em andamento)...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
