@@ -19,8 +19,7 @@ except Exception:
 # --- CSS (ESTILO VISUAL) ---
 st.markdown("""
     <style>
-    /* Importando Montserrat (Textos) e FREDOKA (Título Arredondado) */
-    @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Montserrat:wght@400;600;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
 
     /* Fundo Mágico */
     .stApp {
@@ -63,11 +62,10 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* TÍTULO PRINCIPAL - AGORA COM FONTE ARREDONDA E MAIOR */
+    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-family: 'Fredoka', sans-serif; /* Fonte nova arredondada */
-        font-size: 90px; /* Aumentado de 65px para 90px */
-        font-weight: 700;
+        font-size: 65px;
+        font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
         /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
@@ -77,8 +75,8 @@ st.markdown("""
             0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
             0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
         text-align: center;
-        line-height: 1.1;
-        letter-spacing: 2px;
+        line-height: 1.2;
+        letter-spacing: 1px;
     }
     
     .subtitle {
@@ -236,7 +234,7 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    c1, c2, c3 = st.columns([1, 2, 1]) 
+    c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
             with st.spinner('Sorteando...'):
