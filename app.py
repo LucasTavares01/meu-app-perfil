@@ -3,7 +3,7 @@ import google.generativeai as genai
 import json
 import re
 import traceback
-import time # Added for timestamps in logs
+import time
 
 # --- CONFIGURAÇÃO DE SEGURANÇA ---
 try:
@@ -16,14 +16,6 @@ try:
 except Exception:
     st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
     st.stop()
-
-# --- INITIALIZE LOGS ---
-if 'logs' not in st.session_state: st.session_state.logs = []
-
-def registrar_log(msg):
-    """Adds a message to the debug log without changing app logic."""
-    timestamp = time.strftime("%H:%M:%S")
-    st.session_state.logs.append(f"[{timestamp}] {msg}")
 
 # --- CSS (ESTILO VISUAL - MANTIDO EXATAMENTE IGUAL) ---
 st.markdown("""
@@ -60,13 +52,7 @@ st.markdown("""
     .golden-dice-icon {
         width: 140px;
         display: block;
-        
-        /* AQUI ESTÁ O AJUSTE:
-           50px em cima (para descer da tela)
-           -20px em baixo (para puxar o título para perto) */
         margin: 50px auto -20px auto;
-        
-        /* Brilho ajustado para o tom mostarda */
         filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
@@ -82,19 +68,18 @@ st.markdown("""
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
-        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
         text-shadow:
-            0 0 5px  #F3C623,  /* Brilho interno */
-            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
-            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
-            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
+            0 0 5px  #F3C623,
+            0 0 20px rgba(243, 198, 35, 0.8),
+            0 0 40px rgba(243, 198, 35, 0.6),
+            0 0 60px rgba(243, 198, 35, 0.4);
         text-align: center;
         line-height: 1.1;
         letter-spacing: 1px;
     }
     
     .subtitle {
-        font-size: 28px; /* Levemente reduzido para bater com a referência */
+        font-size: 28px;
         font-weight: 400;
         color: #ffffff;
         margin-top: 10px;
@@ -205,23 +190,23 @@ st.markdown("""
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'reserva' not in st.session_state: st.session_state.reserva = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
+if 'logs' not in st.session_state: st.session_state.logs = []
+
+def registrar_log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    st.session_state.logs.append(f"[{timestamp}] {msg}")
 
 # --- FUNÇÕES ---
 def get_model():
-    # Mantendo a sua lógica exata que funciona
+    # AQUI ESTÁ A CORREÇÃO CRÍTICA:
+    # Não listamos mais os modelos para evitar que o código escolha o 'gemini-2.5' automaticamente.
+    # Forçamos o uso do 1.5 Flash (Cota alta) ou 1.5 Pro (Fallback).
     try:
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        if any('gemini-1.5-flash' in m for m in models): 
-            registrar_log("Modelo: gemini-1.5-flash")
-            return genai.GenerativeModel('gemini-1.5-flash')
-        if any('gemini-2.5-flash' in m for m in models): 
-            registrar_log("Modelo: gemini-2.5-flash")
-            return genai.GenerativeModel('gemini-2.5-flash')
-        registrar_log("Modelo: gemini-pro (fallback)")
-        return genai.GenerativeModel('gemini-pro')
-    except Exception as e:
-        registrar_log(f"Erro ao listar modelos: {e}")
-        return genai.GenerativeModel('gemini-pro')
+        registrar_log("Conectando direto no: gemini-1.5-flash")
+        return genai.GenerativeModel('gemini-1.5-flash')
+    except:
+        registrar_log("Erro no Flash. Tentando fallback: gemini-1.5-pro")
+        return genai.GenerativeModel('gemini-1.5-pro')
 
 def obter_dados_carta():
     """Gera os dados da carta mas NÃO joga na tela. Retorna o JSON."""
