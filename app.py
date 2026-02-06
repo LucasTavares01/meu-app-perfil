@@ -36,13 +36,13 @@ st.markdown("""
     /* Centralizar Spinner */
     div[data-testid="stSpinner"] {
         justify-content: center;
-        color: #FFD700;
+        color: #F3C623; /* Ajustado para o mostarda */
         font-weight: bold;
         margin-top: 10px;
         margin-bottom: 10px;
     }
 
-    /* --- TELA DE BOAS-VINDAS (AJUSTADA) --- */
+    /* --- TELA DE BOAS-VINDAS (NEON MOSTARDA) --- */
     .welcome-box {
         text-align: center;
         padding: 10px;
@@ -52,7 +52,8 @@ st.markdown("""
         width: 140px;
         display: block;
         margin: 0 auto 25px auto;
-        filter: drop-shadow(0 0 25px rgba(255, 215, 0, 0.6));
+        /* Brilho ajustado para o tom mostarda */
+        filter: drop-shadow(0 0 30px rgba(243, 198, 35, 0.7));
         animation: floater 3s ease-in-out infinite;
     }
     @keyframes floater {
@@ -61,23 +62,28 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
     
-    /* Título Principal - Agora "Perfil 7" e não "PERFIL 7" */
+    /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 60px;
+        font-size: 65px;
         font-weight: 800;
-        color: #FFD700; /* Dourado */
-        /* text-transform: uppercase; REMOVIDO para aceitar letras minúsculas */
+        color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
-        text-shadow: 4px 4px 0px #8e44ad, 0 0 30px rgba(255, 215, 0, 0.5);
+        /* O segredo do Neon: Múltiplas sombras suaves da mesma cor */
+        text-shadow:
+            0 0 5px  #F3C623,  /* Brilho interno */
+            0 0 20px rgba(243, 198, 35, 0.8), /* Aura média brilhante */
+            0 0 40px rgba(243, 198, 35, 0.6), /* Aura distante */
+            0 0 60px rgba(243, 198, 35, 0.4); /* Aura muito distante */
         text-align: center;
         line-height: 1.2;
+        letter-spacing: 1px;
     }
     
     .subtitle {
-        font-size: 32px; /* Um pouco maior como na referência */
-        font-weight: 400; /* Mais leve para contrastar com o título */
+        font-size: 28px; /* Levemente reduzido para bater com a referência */
+        font-weight: 400;
         color: #ffffff;
-        margin-top: 5px;
+        margin-top: 10px;
         margin-bottom: 30px;
         text-shadow: 0 2px 5px rgba(0,0,0,0.5);
         text-align: center;
@@ -218,7 +224,7 @@ def gerar_carta():
 # --- INTERFACE ---
 
 if not st.session_state.carta:
-    # --- TELA INICIAL AJUSTADA ---
+    # --- TELA INICIAL COM NEON MOSTARDA ---
     st.markdown("""
         <div class="welcome-box">
             <img src="https://img.icons8.com/3d-fluency/94/dice.png" class="golden-dice-icon">
