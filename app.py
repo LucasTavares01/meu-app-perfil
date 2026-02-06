@@ -4,8 +4,7 @@ import json
 import re
 import traceback
 
-# --- CONFIGURAÇÃO DE SEGURANÇA (Chave Secreta) ---
-# Tenta pegar a chave do cofre do Streamlit
+# --- CONFIGURAÇÃO DE SEGURANÇA (MANTIDA IGUAL) ---
 try:
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -17,7 +16,7 @@ except Exception as e:
     st.error(f"Erro ao configurar API: {e}")
     st.stop()
 
-# --- ESTILIZAÇÃO VISUAL ---
+# --- ESTILIZAÇÃO VISUAL (MANTIDA IGUAL) ---
 st.markdown("""
     <style>
     .stApp { background-color: #1e272e; color: white; }
@@ -36,13 +35,12 @@ if 'carta' not in st.session_state: st.session_state.carta = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
 if 'last_log' not in st.session_state: st.session_state.last_log = "Sistema iniciado."
 
-# --- FUNÇÃO DE AUTO-DESCOBERTA (Que funcionou antes) ---
+# --- FUNÇÃO DE AUTO-DESCOBERTA DE MODELO ---
 def get_best_model():
     try:
         st.session_state.last_log += "\nBuscando modelos disponíveis..."
         available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # Tenta pegar o Flash (rápido) ou o Pro
         if any('gemini-1.5-flash' in m for m in available_models):
             chosen = next(m for m in available_models if 'gemini-1.5-flash' in m)
         elif any('gemini-2.5-flash' in m for m in available_models):
@@ -54,25 +52,29 @@ def get_best_model():
         return genai.GenerativeModel(chosen)
     except Exception as e:
         st.session_state.last_log += f"\nERRO AO BUSCAR MODELOS: {e}"
-        # Fallback
         return genai.GenerativeModel('gemini-pro')
 
 def gerar_carta():
     model = get_best_model()
     
-    # Prompt original que funcionava bem
+    # --- AQUI ESTÁ A ÚNICA ALTERAÇÃO: PROMPT MAIS RÍGIDO NOS TEMAS ---
     prompt = """
     Aja como um gerador de cartas para o jogo Perfil 7.
-    TAREFA: Gere um JSON válido com 1 tema, 20 dicas e 1 resposta.
-    REGRAS DE DIFICULDADE: 3 fáceis, 7 médias, 10 difíceis.
-    EMBARALHAMENTO: As dicas DEVEM estar em ordem aleatória de dificuldade (não coloque as fáceis primeiro).
-    ESPECIAIS: 
-    - 30% de chance de incluir 'PERCA A VEZ' (substituindo uma dica média).
-    - 30% de chance de incluir 'UM PALPITE A QUALQUER HORA' (substituindo uma dica difícil).
+    
+    1. TEMA OBRIGATÓRIO: O campo 'tema' deve ser EXATAMENTE um destes 5 valores: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA". Não use "Personalidade", "Objeto" ou qualquer outro sinônimo.
+    
+    2. CONTEÚDO:
+       - 20 dicas no total.
+       - Dificuldade: 3 fáceis, 7 médias, 10 difíceis.
+       - EMBARALHAMENTO: As dicas DEVEM estar em ordem aleatória de dificuldade.
+       
+    3. REGRAS ESPECIAIS: 
+       - 30% de chance de incluir 'PERCA A VEZ' (substituindo o texto de uma dica média).
+       - 30% de chance de incluir 'UM PALPITE A QUALQUER HORA' (substituindo o texto de uma dica difícil).
     
     FORMATO JSON OBRIGATÓRIO:
     {
-      "tema": "EXEMPLO", 
+      "tema": "PESSOA", 
       "dicas": ["1. Dica A", "2. Dica B", "3. PERCA A VEZ", ...], 
       "resposta": "RESPOSTA FINAL"
     }
@@ -81,7 +83,6 @@ def gerar_carta():
         response = model.generate_content(prompt)
         st.session_state.last_log += f"\n\n--- RESPOSTA DA IA ---\n{response.text}"
         
-        # Limpeza agressiva para garantir que pegue o JSON
         clean_text = response.text.replace("```json", "").replace("```", "").strip()
         match = re.search(r'\{.*\}', clean_text, re.DOTALL)
         
@@ -95,7 +96,7 @@ def gerar_carta():
     except Exception as e:
         st.session_state.last_log += f"\nERRO CRÍTICO NA GERAÇÃO: {traceback.format_exc()}"
 
-# --- INTERFACE ---
+# --- INTERFACE (MANTIDA IGUAL) ---
 st.title("🃏 Perfil 7 AI")
 
 if not st.session_state.carta:
@@ -105,7 +106,6 @@ if not st.session_state.carta:
             st.rerun()
 else:
     c = st.session_state.carta
-    # Visual da Carta
     st.markdown(f"""
     <div class="card-container">
         <div class="header-text">Diga aos jogadores que sou um(a):</div>
@@ -128,7 +128,6 @@ else:
     if st.session_state.revelado:
         st.success(f"RESPOSTA: {c.get('resposta')}")
 
-# Logs sempre visíveis para debug
 st.divider()
 with st.expander("🛠️ Logs Técnicos (Clique aqui se não funcionar)"):
     st.text(st.session_state.last_log)
