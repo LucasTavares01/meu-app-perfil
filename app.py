@@ -64,7 +64,7 @@ st.markdown("""
     
     /* TÍTULO PRINCIPAL - EFEITO NEON MOSTARDA */
     .main-title {
-        font-size: 65px;
+        font-size: 95px; /* <--- AQUI ESTÁ A ÚNICA MUDANÇA (era 65px) */
         font-weight: 800;
         color: #F3C623; /* Amarelo Mostarda Vibrante */
         margin: 0;
