@@ -1,20 +1,22 @@
 import streamlit as st
-import google.generativeai as genai
+from groq import Groq
 import json
 import re
 import traceback
 import time
 
-# --- CONFIGURAÇÃO DE SEGURANÇA ---
+# --- CONFIGURAÇÃO DE SEGURANÇA (GROQ) ---
 try:
-    if "GOOGLE_API_KEY" in st.secrets:
-        api_key = st.secrets["GOOGLE_API_KEY"]
-        genai.configure(api_key=api_key)
+    if "GROQ_API_KEY" in st.secrets:
+        api_key = st.secrets["GROQ_API_KEY"]
     else:
+        # Fallback para rodar local se não estiver nos secrets
         api_key = "COLOQUE_SUA_KEY_AQUI_SE_ESTIVER_RODANDO_LOCAL" 
-        genai.configure(api_key=api_key)
+    
+    # Inicializa o cliente da Groq
+    client = Groq(api_key=api_key)
 except Exception:
-    st.error("ERRO: Configure sua chave no painel 'Secrets' do Streamlit.")
+    st.error("ERRO: Configure sua chave 'GROQ_API_KEY' no painel 'Secrets' do Streamlit.")
     st.stop()
 
 # --- CSS (ESTILO VISUAL - MANTIDO EXATAMENTE IGUAL) ---
@@ -122,7 +124,7 @@ st.markdown("""
         background-color: #feca57;
     }
 
-    /* --- ESTILO DAS CARTAS (MANTIDO PERFEITO) --- */
+    /* --- ESTILO DAS CARTAS --- */
     .card-theme-box {
         background: #ffffff;
         padding: 20px;
@@ -186,7 +188,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ESTADOS (Adicionado 'reserva' para o buffer) ---
+# --- ESTADOS E LOGS ---
 if 'carta' not in st.session_state: st.session_state.carta = None
 if 'reserva' not in st.session_state: st.session_state.reserva = None
 if 'revelado' not in st.session_state: st.session_state.revelado = False
@@ -196,43 +198,57 @@ def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
-# --- FUNÇÕES ---
-def get_model():
-    # AQUI ESTÁ A CORREÇÃO CRÍTICA:
-    # Não listamos mais os modelos para evitar que o código escolha o 'gemini-2.5' automaticamente.
-    # Forçamos o uso do 1.5 Flash (Cota alta) ou 1.5 Pro (Fallback).
-    try:
-        registrar_log("Conectando direto no: gemini-1.5-flash")
-        return genai.GenerativeModel('gemini-1.5-flash')
-    except:
-        registrar_log("Erro no Flash. Tentando fallback: gemini-1.5-pro")
-        return genai.GenerativeModel('gemini-1.5-pro')
-
+# --- LÓGICA DE GERAÇÃO (VIA GROQ) ---
 def obter_dados_carta():
-    """Gera os dados da carta mas NÃO joga na tela. Retorna o JSON."""
-    registrar_log("Iniciando requisição API...")
-    model = get_model()
+    """Gera carta usando Groq (Llama 3.3)"""
+    registrar_log("Iniciando requisição Groq...")
+    
     prompt = """
-    Jogo 'Perfil 7'. Gere JSON.
+    Jogo 'Perfil 7'. Gere JSON VÁLIDO.
     1. TEMA: "PESSOA", "LUGAR", "ANO", "DIGITAL" ou "COISA".
     2. CONTEÚDO: 20 dicas (3 fáceis, 7 médias, 10 difíceis) em ORDEM ALEATÓRIA.
-    3. REGRAS DE ITENS ESPECIAIS (MÁXIMO 1 DE CADA):
-       - 30% chance 'PERCA A VEZ' (substitui UMA dica média).
-       - 30% chance 'UM PALPITE A QUALQUER HORA' (substitui UMA dica difícil).
-    FORMATO JSON: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
+    3. REGRAS: 30% chance 'PERCA A VEZ', 30% chance 'UM PALPITE A QUALQUER HORA'.
+    
+    Responda APENAS com o JSON, sem markdown.
+    FORMATO: {"tema": "PESSOA", "dicas": ["1. Dica...", "2. PERCA A VEZ", ...], "resposta": "RESPOSTA"}
     """
+    
     try:
-        response = model.generate_content(prompt)
-        text = response.text.replace("```json", "").replace("```", "").strip()
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if match:
-            registrar_log("Sucesso: JSON recebido.")
-            return json.loads(match.group())
-        else:
-            registrar_log(f"Erro: JSON inválido. Texto: {text[:50]}...")
-            return None
+        completion = client.chat.completions.create(
+            # Modelo Llama 3.3 70B (Muito inteligente e rápido)
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": "Você é uma API que retorna apenas JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1024,
+            top_p=1,
+            stream=False,
+            # Força o modo JSON para garantir que não venha texto extra
+            response_format={"type": "json_object"}
+        )
+        
+        # Pega o texto da resposta
+        content = completion.choices[0].message.content
+        registrar_log("Resposta recebida da Groq.")
+        
+        # Parse do JSON
+        try:
+            dados = json.loads(content)
+            registrar_log("JSON validado com sucesso!")
+            return dados
+        except json.JSONDecodeError:
+            # Fallback com regex caso o JSON venha sujo (raro no modo json_object)
+            match = re.search(r'\{.*\}', content, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+            else:
+                registrar_log(f"Erro de parse no JSON: {content[:50]}...")
+                return None
+                
     except Exception as e:
-        registrar_log(f"ERRO CRÍTICO API: {e}")
+        registrar_log(f"ERRO CRÍTICO GROQ: {e}")
         return None
 
 # --- INTERFACE ---
@@ -248,21 +264,25 @@ if not st.session_state.carta:
         </div>
     """, unsafe_allow_html=True)
     
-    # Mantendo a estrutura de colunas que deixa o botão centralizado e do tamanho certo
     c1, c2, c3 = st.columns([1, 2, 1]) 
     with c2:
         if st.button("✨ GERAR NOVA CARTA", use_container_width=True):
             registrar_log("Botão Iniciar Clicado")
-            with st.spinner('Inicializando e criando estoque de cartas...'):
-                # GERA DUAS CARTAS NA PRIMEIRA VEZ (A atual e a reserva)
-                st.session_state.carta = obter_dados_carta()
-                registrar_log("Gerando reserva inicial...")
-                st.session_state.reserva = obter_dados_carta()
-                
-                if st.session_state.carta: # Se deu certo pelo menos uma
-                    st.rerun()
-                else:
-                    st.error("Erro ao conectar com a IA. Tente novamente.")
+            
+            if st.session_state.reserva:
+                st.session_state.carta = st.session_state.reserva
+                st.session_state.reserva = None 
+                st.session_state.revelado = False
+                st.rerun()
+            else:
+                with st.spinner('Conectando à Groq e criando cartas...'):
+                    st.session_state.carta = obter_dados_carta()
+                    if st.session_state.carta:
+                        registrar_log("Gerando reserva...")
+                        st.session_state.reserva = obter_dados_carta()
+                        st.rerun()
+                    else:
+                        st.error("Erro ao conectar com a Groq. Veja os logs abaixo.")
 
 else:
     c = st.session_state.carta
@@ -297,38 +317,23 @@ else:
     
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
-        # BOTÃO COM LÓGICA DE BUFFER
         if st.button("🔄 NOVA CARTA", use_container_width=True):
-            registrar_log("Botão Nova Carta Clicado")
-            if st.session_state.reserva:
-                # Usa a carta que já estava pronta (INSTANTÂNEO)
-                registrar_log("Usando Reserva.")
-                st.session_state.carta = st.session_state.reserva
-                st.session_state.reserva = None # Esvazia a reserva para forçar recarga
-                st.session_state.revelado = False
-                st.rerun()
-            else:
-                # Se não tiver reserva (ex: erro de conexão no background), gera na hora
-                registrar_log("Reserva vazia. Gerando na hora...")
-                with st.spinner("Gerando carta..."):
-                    st.session_state.carta = obter_dados_carta()
-                    st.session_state.revelado = False
-                    st.rerun()
+            registrar_log("Voltando para tela inicial...")
+            st.session_state.carta = None
+            st.rerun()
 
-    # --- RECARGA DE BUFFER EM BACKGROUND ---
-    # Isso roda silenciosamente DEPOIS de mostrar a carta atual.
-    # Assim, enquanto você joga, a próxima carta está sendo criada.
+    # Recarga em background
     if st.session_state.carta and st.session_state.reserva is None:
-        registrar_log("Iniciando recarga de background...")
+        registrar_log("Recarregando buffer (Groq)...")
         nova_reserva = obter_dados_carta()
         if nova_reserva:
             st.session_state.reserva = nova_reserva
-            registrar_log("Buffer recarregado!")
+            registrar_log("Buffer pronto!")
 
-# --- PAINEL DE LOGS (DEBUG) ---
+# --- PAINEL DE LOGS ---
 st.divider()
 with st.expander("🛠️ Logs do Sistema (Debug)"):
     if not st.session_state.logs:
         st.write("Nenhum log registrado.")
-    for log_item in st.session_state.logs[-15:]: # Mostra os ultimos 15
+    for log_item in st.session_state.logs[-15:]:
         st.markdown(f"<div class='log-text'>{log_item}</div>", unsafe_allow_html=True)
