@@ -20,7 +20,6 @@ try:
     if "GROQ_API_KEY" in st.secrets:
         api_key = st.secrets["GROQ_API_KEY"]
     else:
-        # Fallback apenas para teste local, não use em produção sem secrets
         api_key = "teste" 
     
     if api_key == "teste" and "GROQ_API_KEY" not in st.secrets:
@@ -46,14 +45,12 @@ st.markdown("""
 
     #MainMenu, footer, header {visibility: hidden;}
     
-    /* Ajuste de respiro lateral para telas pequenas */
     .main .block-container { 
         padding-top: 2rem; 
         padding-left: 1rem;
         padding-right: 1rem;
     }
 
-    /* Título Responsivo */
     .main-title {
         font-size: clamp(45px, 12vw, 90px) !important; 
         font-weight: 800;
@@ -86,7 +83,6 @@ st.markdown("""
         100% { transform: translateY(0px); }
     }
 
-    /* Cartão de Tema */
     .card-theme-box {
         background: #ffffff;
         padding: 15px;
@@ -103,7 +99,6 @@ st.markdown("""
         text-transform: uppercase; 
     }
 
-    /* Lista de Dicas */
     .card-tips-box {
         background: #ffffff;
         padding: 5px 15px;
@@ -121,7 +116,6 @@ st.markdown("""
         color: #1e272e; 
     }
 
-    /* Estilização dos Botões */
     .stButton > button {
         background: linear-gradient(90deg, #ff9f43, #feca57, #ff9f43);
         color: #5d2e01;
@@ -131,7 +125,6 @@ st.markdown("""
         transition: 0.3s;
     }
 
-    /* Ajuste para as colunas do Streamlit no Mobile */
     @media (max-width: 640px) {
         div[data-testid="column"] {
             width: 100% !important;
@@ -154,10 +147,26 @@ def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     st.session_state.logs.append(f"[{timestamp}] {msg}")
 
+# --- FUNÇÃO DE BLINDAGEM (CORREÇÃO DO ERRO 'DICT') ---
+def sanitizar_item(item):
+    """Garante que o item seja uma string limpa, mesmo se vier como dict"""
+    if isinstance(item, str):
+        return item.strip()
+    elif isinstance(item, dict):
+        # Se vier {'dica': 'texto'}, pega o primeiro valor
+        try:
+            return str(list(item.values())[0]).strip()
+        except:
+            return str(item)
+    elif item is None:
+        return ""
+    else:
+        return str(item)
+
 def verificar_similaridade(nova_resposta):
-    nova = nova_resposta.lower().strip()
+    nova = sanitizar_item(nova_resposta).lower()
     for usada in st.session_state.used_answers:
-        usada_clean = usada.lower().strip()
+        usada_clean = sanitizar_item(usada).lower()
         if nova in usada_clean or usada_clean in nova:
             return True
         if difflib.SequenceMatcher(None, nova, usada_clean).ratio() > 0.8:
@@ -167,7 +176,6 @@ def verificar_similaridade(nova_resposta):
 # --- FUNÇÕES DE GERAÇÃO ---
 
 def gerar_dicas_complementares(resposta, quantidade_necessaria, tema):
-    # CORREÇÃO: Uso de aspas triplas para evitar erro de sintaxe
     prompt_rescue = f"""
     Estou criando um jogo sobre: {resposta} (Tema: {tema}).
     Preciso de {quantidade_necessaria} fatos NOVOS e VERDADEIROS sobre isso.
@@ -180,11 +188,12 @@ def gerar_dicas_complementares(resposta, quantidade_necessaria, tema):
             temperature=0.2,
             response_format={"type": "json_object"}
         )
-        return json.loads(completion.choices[0].message.content).get("dicas_extras", [])
+        raw_list = json.loads(completion.choices[0].message.content).get("dicas_extras", [])
+        # Sanitiza a saída da IA
+        return [sanitizar_item(x) for x in raw_list]
     except: return []
 
 def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
-    # CORREÇÃO: Uso de aspas triplas aqui também
     prompt_auditoria = f"""Ano alvo: {ano_alvo}. Retorne apenas dicas confirmadas para este ano exato em JSON: {{"dicas_aprovadas": []}}"""
     try:
         completion = client.chat.completions.create(
@@ -193,18 +202,18 @@ def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
             temperature=0.0,
             response_format={"type": "json_object"}
         )
-        return json.loads(completion.choices[0].message.content).get("dicas_aprovadas", [])
+        raw_list = json.loads(completion.choices[0].message.content).get("dicas_aprovadas", [])
+        return [sanitizar_item(x) for x in raw_list]
     except: return []
 
 def obter_dados_carta():
     tentativas = 0
     while tentativas < 3:
         tema_sorteado = random.choice(["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"])
-        proibidos_str = ", ".join(st.session_state.used_answers[-20:])
+        proibidos_str = ", ".join([str(x) for x in st.session_state.used_answers[-20:]])
         
         prompt_especifico = "- RESPOSTA: ANO 4 DÍGITOS." if tema_sorteado == "ANO" else "- RESPOSTA: Algo famoso mundialmente."
         
-        # CORREÇÃO: Aspas triplas para proteger o JSON
         prompt = f"""Jogo Perfil. Tema: {tema_sorteado}. {prompt_especifico} Proibido: {proibidos_str}. JSON: {{"tema": "{tema_sorteado}", "dicas": [], "resposta": ""}}"""
 
         try:
@@ -215,14 +224,22 @@ def obter_dados_carta():
                 response_format={"type": "json_object"}
             )
             dados = json.loads(completion.choices[0].message.content)
-            resposta_atual = dados["resposta"]
             
+            # Sanitiza Resposta
+            resposta_atual = sanitizar_item(dados.get("resposta", "Desconhecido"))
+            
+            # Sanitiza Lista Inicial de Dicas
+            dicas_raw = dados.get("dicas", [])
+            if not isinstance(dicas_raw, list): dicas_raw = []
+            dicas_limpas = [sanitizar_item(d) for d in dicas_raw]
+
             if verificar_similaridade(resposta_atual): 
                 tentativas += 1; continue
             
-            dicas_limpas = auditar_dicas_ano(resposta_atual, dados.get("dicas", [])) if tema_sorteado == "ANO" else dados.get("dicas", [])
+            if tema_sorteado == "ANO":
+                dicas_limpas = auditar_dicas_ano(resposta_atual, dicas_limpas)
 
-            # Filtro de Spoilers
+            # Filtro de Spoilers (Agora seguro porque tudo é string)
             palavras_proibidas = [p for p in resposta_atual.lower().split() if len(p) > 3]
             dicas_sem_spoiler = [d for d in dicas_limpas if not any(p in d.lower() for p in palavras_proibidas)]
 
@@ -230,31 +247,35 @@ def obter_dados_carta():
             ciclos = 0
             while len(dicas_sem_spoiler) < 20 and ciclos < 2:
                 novas = gerar_dicas_complementares(resposta_atual, 22-len(dicas_sem_spoiler), tema_sorteado)
+                # 'novas' já vem sanitizada da função
                 dicas_sem_spoiler += [nd for nd in novas if not any(p in nd.lower() for p in palavras_proibidas)]
                 ciclos += 1
 
             if len(dicas_sem_spoiler) < 18: 
                 tentativas += 1; continue
 
-            # Formatação Final com itens especiais
+            # Montagem Final da Carta
             dicas_finais = []
+            dica_idx = 0
             
-            for i in range(22):
-                if len(dicas_finais) >= 20: break
-                
-                # Inserção estratégica (sem substituir dicas existentes, apenas intercalando)
-                if i == 1:
+            # Vamos iterar 20 vezes para criar as posições
+            for i in range(20):
+                if i == 1: # Posição 2 (índice 1)
                     dicas_finais.append("2. PERCA A VEZ")
-                elif i == 11:
+                elif i == 11: # Posição 12 (índice 11)
                     dicas_finais.append("12. UM PALPITE A QUALQUER HORA")
-                
-                # Se ainda tem dica real para usar
-                if i < len(dicas_sem_spoiler):
-                    dicas_finais.append(dicas_sem_spoiler[i])
+                else:
+                    if dica_idx < len(dicas_sem_spoiler):
+                        dicas_finais.append(dicas_sem_spoiler[dica_idx])
+                        dica_idx += 1
+                    else:
+                        break # Acabaram as dicas reais
 
-            dados['dicas'] = dicas_finais[:20]
+            dados['dicas'] = dicas_finais
+            dados['resposta'] = resposta_atual # Garante que vai a versão limpa
             st.session_state.used_answers.append(resposta_atual)
             return dados
+            
         except Exception as e: 
             registrar_log(f"Erro: {e}")
             tentativas += 1
@@ -291,18 +312,17 @@ else:
     </div>
     """, unsafe_allow_html=True)
     
-    # Botão de Revelar (Centralizado)
     if st.button("👁️ REVELAR RESPOSTA", use_container_width=True): 
         st.session_state.revelado = True
 
     if st.session_state.revelado:
         st.success(f"🏆 RESPOSTA: {c.get('resposta')}")
 
-    # Exibição das Dicas
     tips_html = '<div class="card-tips-box">'
     for idx, dica in enumerate(c.get('dicas', [])):
-        # Tenta extrair o número da dica se a IA não mandou
-        display_text = dica if dica[0].isdigit() else f"{idx+1}. {dica}"
+        # Força string para evitar erro na interface também
+        dica_str = str(dica)
+        display_text = dica_str if (len(dica_str) > 0 and dica_str[0].isdigit()) else f"{idx+1}. {dica_str}"
         
         if "PERCA A VEZ" in display_text.upper():
             tips_html += f"<div class='hint-row' style='color:#d63031; background: #ffe6e6; border-radius: 5px; padding: 10px;'>🚫 {display_text}</div>"
@@ -313,14 +333,13 @@ else:
     tips_html += '</div>'
     st.markdown(tips_html, unsafe_allow_html=True)
     
-    st.write("") # Espaçador
+    st.write("") 
     
     if st.button("🔄 PRÓXIMA CARTA", use_container_width=True):
         st.session_state.carta = None
         st.session_state.revelado = False
         st.rerun()
 
-    # Pre-fetch da próxima carta em background
     if st.session_state.reserva is None:
         st.session_state.reserva = obter_dados_carta()
 
