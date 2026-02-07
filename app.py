@@ -124,7 +124,6 @@ def verificar_similaridade(nova_resposta):
 
 # --- FUNÇÕES PARA CÁLCULO DE ANO/SÉCULO ---
 def int_to_roman(num):
-    """Converte inteiro para Algarismo Romano"""
     val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
     syb = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
     roman_num = ''
@@ -137,16 +136,44 @@ def int_to_roman(num):
     return roman_num
 
 def calcular_seculo(ano):
-    """Calcula o século e retorna em romano"""
     seculo = (ano - 1) // 100 + 1
     return int_to_roman(seculo)
 
+# --- AUDITORIA DE ANO (RESTAURADA) ---
+def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
+    """Verifica se os fatos realmente ocorreram no ano alvo"""
+    registrar_log(f"🕵️ Auditando fatos para o ano {ano_alvo}...")
+    
+    prompt_auditoria = f"""
+    Você é um Auditor Histórico rigoroso.
+    Ano Alvo: {ano_alvo}.
+    
+    Lista de Fatos para verificar: {json.dumps(lista_dicas_candidatas)}
+    
+    TAREFA: Retorne APENAS os fatos que aconteceram EXATAMENTE neste ano.
+    Se o fato for de um ano diferente (mesmo que próximo), DESCARTE.
+    Se for vago ("foi um ano importante"), DESCARTE.
+    
+    JSON: {{"dicas_aprovadas": ["dica1", "dica2"]}}
+    """
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt_auditoria}],
+            temperature=0.0, # Temperatura Zero para precisão máxima
+            response_format={"type": "json_object"}
+        )
+        raw_list = json.loads(completion.choices[0].message.content).get("dicas_aprovadas", [])
+        aprovadas = [sanitizar_item(x) for x in raw_list]
+        registrar_log(f"✅ Auditoria completa: {len(aprovadas)} dicas aprovadas de {len(lista_dicas_candidatas)}.")
+        return aprovadas
+    except Exception as e:
+        registrar_log(f"⚠️ Erro na auditoria: {e}")
+        return lista_dicas_candidatas # Se falhar, usa as originais com risco
+
 def gerar_dicas_complementares(resposta, qtd, tema):
     registrar_log(f"➕ Gerando +{qtd} dicas extras...")
-    
-    # Prompt mais agressivo para evitar dicas vagas nas complementares também
-    regra_vagueza = "PROIBIDO: Frases vagas como 'foi um ano importante'. Use FATOS: Quem nasceu, quem morreu, o que foi inventado, filmes lançados."
-    
+    regra_vagueza = "PROIBIDO: Frases vagas. Use FATOS: Quem nasceu, morreu, inventou ou lançou algo."
     prompt = f"""
     Jogo sobre: {resposta} (Tema: {tema}). 
     Gere {qtd} fatos CURTOS, CONCRETOS e CURIOSOS. 
@@ -167,26 +194,19 @@ def obter_dados_carta():
         tema = random.choice(["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"])
         registrar_log(f"Tentativa {tentativas+1}: Tema '{tema}'")
         
-        # --- REGRAS ESPECÍFICAS DE CONTEÚDO ---
         regras_especificas = {
-            "PESSOA": "Deve ser celebridade MUNDIAL (Cantor, Ator, Figura Histórica). Dicas devem ser biografia, prêmios, polêmicas.",
-            "LUGAR": "Países ou Pontos Turísticos Globais. Dicas: Geografia, História, Clima, Economia.",
-            "DIGITAL": "Apps, Games ou Redes Sociais. Dicas: Criador, Ano de lançamento, Funcionalidades, Memes.",
+            "PESSOA": "Deve ser uma celebridade MUNDIAL (Cantor, Ator, Figura Histórica).",
+            "LUGAR": "Países, Capitais turísticas ou Monumentos famosos. Evite cidades pequenas.",
+            "DIGITAL": "Apps, Games ou Redes Sociais. Dicas: Criador, Ano de lançamento, Funcionalidades.",
             "COISA": "Objetos ou Invenções. Dicas: Material, Uso, Origem, Quem inventou."
         }
         
-        # --- LÓGICA BLINDADA PARA ANO ---
         if tema == "ANO":
             instrucao_extra = """
             TEMA ANO - REGRAS RÍGIDAS:
-            1. PROIBIDO usar frases vagas como "Ano de mudança", "Marco histórico", "Fim de uma era".
-            2. TODAS as dicas devem ser FATOS VERIFICÁVEIS:
-               - "Lançamento do filme X"
-               - "Nascimento de [Pessoa Famosa]"
-               - "Início/Fim da Guerra X"
-               - "Invenção de Y"
-               - "Copa do Mundo no país Z"
-            3. A resposta deve ser um ano famoso (ex: 1945, 1969, 2001, 2020).
+            1. PROIBIDO usar frases vagas ("Ano de mudança", "Marco histórico").
+            2. USE APENAS FATOS VERIFICÁVEIS (Filmes, Nascimentos, Guerras, Copas).
+            3. Resposta deve ser um ano famoso.
             """
         else:
             instrucao_extra = regras_especificas.get(tema, "")
@@ -198,14 +218,10 @@ def obter_dados_carta():
         
         prompt = f"""
         Jogo Perfil. Tema: {tema}.
-        REGRA DE OURO: A Resposta deve ser EXTREMAMENTE POPULAR (Conhecimento Geral).
-        
+        REGRA DE OURO: A Resposta deve ser EXTREMAMENTE POPULAR.
         {instrucao_extra}
-        
-        Dificuldade: Comece com dicas difíceis (fatos obscuros do tema) e termine com fáceis.
+        JSON: {{'tema': '{tema}', 'dicas': [lista de 25 dicas para sobrar], 'resposta': 'Nome'}}
         PROIBIDO (Já saiu): {proibidos_str}.
-        
-        JSON: {{'tema': '{tema}', 'dicas': [lista de 20 dicas], 'resposta': 'Nome'}}
         """
         
         try:
@@ -225,35 +241,38 @@ def obter_dados_carta():
             dicas = [sanitizar_item(d) for d in dados.get('dicas', [])]
             dicas = [d for d in dicas if resposta.lower() not in d.lower()]
             
-            # --- PÓS-PROCESSAMENTO PARA ANO ---
+            # --- PROCESSAMENTO ESPECIAL PARA ANO ---
             if tema == "ANO":
                 try:
-                    # Remove qualquer dica vaga que a IA tenha deixado passar (Filtro de emergência)
-                    dicas_filtradas = [d for d in dicas if "esperança" not in d.lower() and "mudança" not in d.lower() and "marco" not in d.lower()]
-                    dicas = dicas_filtradas
+                    # 1. Auditoria Rigorosa
+                    dicas = auditar_dicas_ano(resposta, dicas)
+                    
+                    # 2. Filtro de Vagueza (Segurança Extra)
+                    dicas = [d for d in dicas if "esperança" not in d.lower() and "mudança" not in d.lower() and "marco" not in d.lower()]
 
+                    # 3. Cálculo Matemático
                     ano_int = int(re.sub(r'\D', '', resposta))
                     romano = int_to_roman(ano_int)
                     seculo = calcular_seculo(ano_int)
                     
-                    # Adiciona as dicas OBRIGATÓRIAS
+                    # 4. Inserção
                     dicas.append(f"Em algarismos romanos: {romano}")
                     dicas.append(f"Pertence ao Século {seculo}")
-                    
-                    registrar_log(f"📅 Inserido: {romano} e Séc {seculo}")
-                except:
-                    pass
-            
-            # Embaralha as dicas ANTES de completar, para que Romano e Século não fiquem no fim
+                except Exception as e:
+                    registrar_log(f"Erro processando ano: {e}")
+
+            # Embaralha tudo
             random.shuffle(dicas)
 
             # Completa dicas se faltar
             ciclos = 0
             while len(dicas) < 20 and ciclos < 3:
                 novas = gerar_dicas_complementares(resposta, 22-len(dicas), tema)
-                # Filtra vagas nas novas também
-                novas_validas = [n for n in novas if "esperança" not in n.lower() and "importante" not in n.lower()]
-                dicas.extend([n for n in novas_validas if resposta.lower() not in n.lower()])
+                if tema == "ANO":
+                    # Se for ano, audita as novas também!
+                    novas = auditar_dicas_ano(resposta, novas)
+                
+                dicas.extend([n for n in novas if resposta.lower() not in n.lower()])
                 ciclos += 1
                 if not novas: break
             
@@ -264,9 +283,7 @@ def obter_dados_carta():
             # Montagem Final
             dicas_finais = []
             idx_dica = 0
-            
-            # Se for ANO, vamos garantir que o Romano e Século entrem na lista final (pois embaralhamos)
-            # Mas vamos re-embaralhar no final para garantir aleatoriedade de posição
+            # Re-embaralhar para garantir posições aleatórias
             random.shuffle(dicas)
             
             for i in range(20):
