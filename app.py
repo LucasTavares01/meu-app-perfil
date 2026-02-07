@@ -4,7 +4,7 @@ import json
 import random
 import difflib
 import time
-import re # Importado para ajudar a achar números na string
+import re 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -143,7 +143,16 @@ def calcular_seculo(ano):
 
 def gerar_dicas_complementares(resposta, qtd, tema):
     registrar_log(f"➕ Gerando +{qtd} dicas extras...")
-    prompt = f"Jogo sobre: {resposta} (Tema: {tema}). Gere {qtd} fatos CURTOS e CURIOSOS. Resposta '{resposta}' PROIBIDA no texto. JSON: {{'dicas': []}}"
+    
+    # Prompt mais agressivo para evitar dicas vagas nas complementares também
+    regra_vagueza = "PROIBIDO: Frases vagas como 'foi um ano importante'. Use FATOS: Quem nasceu, quem morreu, o que foi inventado, filmes lançados."
+    
+    prompt = f"""
+    Jogo sobre: {resposta} (Tema: {tema}). 
+    Gere {qtd} fatos CURTOS, CONCRETOS e CURIOSOS. 
+    {regra_vagueza}
+    Resposta '{resposta}' PROIBIDA no texto. JSON: {{'dicas': []}}
+    """
     try:
         resp = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}], response_format={"type":"json_object"})
         raw_list = json.loads(resp.choices[0].message.content).get('dicas', [])
@@ -155,18 +164,32 @@ def obter_dados_carta():
     registrar_log("🎲 Iniciando geração de carta...")
     
     while tentativas < 4:
-        # Sorteio Uniforme
         tema = random.choice(["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"])
         registrar_log(f"Tentativa {tentativas+1}: Tema '{tema}'")
         
+        # --- REGRAS ESPECÍFICAS DE CONTEÚDO ---
         regras_especificas = {
-            "PESSOA": "Deve ser uma celebridade MUNDIALMENTE famosa, ícone pop ou figura histórica que todo mundo conhece (Ex: Cantores, Atores, Atletas de elite).",
-            "LUGAR": "Países, Capitais turísticas ou Monumentos famosos (Ex: Torre Eiffel, Brasil, Disney). Evite cidades pequenas.",
-            "ANO": "Anos com eventos globais massivos (Ex: 1945, 2001, 2020).",
-            "DIGITAL": "Redes sociais, Apps famosos, Games populares ou Memes virais. (Ex: Instagram, WhatsApp, Minecraft).",
-            "COISA": "Objetos do cotidiano, invenções revolucionárias ou marcas gigantes."
+            "PESSOA": "Deve ser celebridade MUNDIAL (Cantor, Ator, Figura Histórica). Dicas devem ser biografia, prêmios, polêmicas.",
+            "LUGAR": "Países ou Pontos Turísticos Globais. Dicas: Geografia, História, Clima, Economia.",
+            "DIGITAL": "Apps, Games ou Redes Sociais. Dicas: Criador, Ano de lançamento, Funcionalidades, Memes.",
+            "COISA": "Objetos ou Invenções. Dicas: Material, Uso, Origem, Quem inventou."
         }
-        instrucao_extra = regras_especificas.get(tema, "")
+        
+        # --- LÓGICA BLINDADA PARA ANO ---
+        if tema == "ANO":
+            instrucao_extra = """
+            TEMA ANO - REGRAS RÍGIDAS:
+            1. PROIBIDO usar frases vagas como "Ano de mudança", "Marco histórico", "Fim de uma era".
+            2. TODAS as dicas devem ser FATOS VERIFICÁVEIS:
+               - "Lançamento do filme X"
+               - "Nascimento de [Pessoa Famosa]"
+               - "Início/Fim da Guerra X"
+               - "Invenção de Y"
+               - "Copa do Mundo no país Z"
+            3. A resposta deve ser um ano famoso (ex: 1945, 1969, 2001, 2020).
+            """
+        else:
+            instrucao_extra = regras_especificas.get(tema, "")
 
         # Amostragem para prompt
         total_usadas = len(st.session_state.used_answers)
@@ -175,22 +198,24 @@ def obter_dados_carta():
         
         prompt = f"""
         Jogo Perfil. Tema: {tema}.
-        REGRA DE OURO: A Resposta deve ser EXTREMAMENTE POPULAR (Nível: Conhecimento Geral/Povão).
+        REGRA DE OURO: A Resposta deve ser EXTREMAMENTE POPULAR (Conhecimento Geral).
+        
         {instrucao_extra}
-        A dificuldade do jogo deve vir das DICAS (começar difícil/vago e ir facilitando), NÃO da resposta ser desconhecida.
+        
+        Dificuldade: Comece com dicas difíceis (fatos obscuros do tema) e termine com fáceis.
         PROIBIDO (Já saiu): {proibidos_str}.
-        JSON OBRIGATÓRIO: {{'tema': '{tema}', 'dicas': [lista de 20 dicas], 'resposta': 'Nome'}}
+        
+        JSON: {{'tema': '{tema}', 'dicas': [lista de 20 dicas], 'resposta': 'Nome'}}
         """
         
         try:
-            resp = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}], temperature=0.7, response_format={"type":"json_object"})
+            resp = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}], temperature=0.6, response_format={"type":"json_object"})
             dados = json.loads(resp.choices[0].message.content)
             resposta = sanitizar_item(dados.get('resposta', ''))
             
             registrar_log(f"IA Sugeriu: {resposta}")
 
             if not resposta or len(resposta) < 2:
-                registrar_log("Resposta inválida. Tentando de novo...")
                 tentativas += 1; continue
 
             if verificar_similaridade(resposta):
@@ -198,32 +223,37 @@ def obter_dados_carta():
                 tentativas += 1; continue
                 
             dicas = [sanitizar_item(d) for d in dados.get('dicas', [])]
-            # Remove spoilers
             dicas = [d for d in dicas if resposta.lower() not in d.lower()]
             
-            # --- LÓGICA ESPECIAL PARA ANO (ROMANO E SÉCULO) ---
+            # --- PÓS-PROCESSAMENTO PARA ANO ---
             if tema == "ANO":
                 try:
-                    # Tenta extrair apenas os números da resposta (ex: "Ano 2000" vira 2000)
+                    # Remove qualquer dica vaga que a IA tenha deixado passar (Filtro de emergência)
+                    dicas_filtradas = [d for d in dicas if "esperança" not in d.lower() and "mudança" not in d.lower() and "marco" not in d.lower()]
+                    dicas = dicas_filtradas
+
                     ano_int = int(re.sub(r'\D', '', resposta))
                     romano = int_to_roman(ano_int)
                     seculo = calcular_seculo(ano_int)
                     
-                    # Adiciona as dicas especiais
+                    # Adiciona as dicas OBRIGATÓRIAS
                     dicas.append(f"Em algarismos romanos: {romano}")
                     dicas.append(f"Pertence ao Século {seculo}")
                     
-                    # Embaralha para que não fiquem sempre no final
-                    random.shuffle(dicas)
-                    registrar_log(f"📅 Adicionadas dicas de Romano ({romano}) e Século ({seculo})")
-                except Exception as e:
-                    registrar_log(f"⚠️ Erro ao calcular ano/século: {e}")
+                    registrar_log(f"📅 Inserido: {romano} e Séc {seculo}")
+                except:
+                    pass
+            
+            # Embaralha as dicas ANTES de completar, para que Romano e Século não fiquem no fim
+            random.shuffle(dicas)
 
             # Completa dicas se faltar
             ciclos = 0
-            while len(dicas) < 20 and ciclos < 2:
+            while len(dicas) < 20 and ciclos < 3:
                 novas = gerar_dicas_complementares(resposta, 22-len(dicas), tema)
-                dicas.extend([n for n in novas if resposta.lower() not in n.lower()])
+                # Filtra vagas nas novas também
+                novas_validas = [n for n in novas if "esperança" not in n.lower() and "importante" not in n.lower()]
+                dicas.extend([n for n in novas_validas if resposta.lower() not in n.lower()])
                 ciclos += 1
                 if not novas: break
             
@@ -231,9 +261,14 @@ def obter_dados_carta():
                 registrar_log("⚠️ Poucas dicas válidas. Descartando.")
                 tentativas += 1; continue
 
-            # Monta lista final
+            # Montagem Final
             dicas_finais = []
             idx_dica = 0
+            
+            # Se for ANO, vamos garantir que o Romano e Século entrem na lista final (pois embaralhamos)
+            # Mas vamos re-embaralhar no final para garantir aleatoriedade de posição
+            random.shuffle(dicas)
+            
             for i in range(20):
                 if i == 1: dicas_finais.append("2. PERCA A VEZ")
                 elif i == 11: dicas_finais.append("12. UM PALPITE A QUALQUER HORA")
