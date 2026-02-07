@@ -4,6 +4,7 @@ import json
 import random
 import difflib
 import time
+import re # Importado para ajudar a achar números na string
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -86,7 +87,7 @@ except Exception:
     st.error("ERRO: Configure GROQ_API_KEY.")
     st.stop()
 
-# --- CSS RESPONSIVO (DESIGN MANTIDO) ---
+# --- CSS RESPONSIVO ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -121,6 +122,25 @@ def verificar_similaridade(nova_resposta):
         if difflib.SequenceMatcher(None, nova, usada_clean).ratio() > 0.85: return True 
     return False
 
+# --- FUNÇÕES PARA CÁLCULO DE ANO/SÉCULO ---
+def int_to_roman(num):
+    """Converte inteiro para Algarismo Romano"""
+    val = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1]
+    syb = ["M", "CM", "D", "CD", "C", "XC", "L", "XL", "X", "IX", "V", "IV", "I"]
+    roman_num = ''
+    i = 0
+    while num > 0:
+        for _ in range(num // val[i]):
+            roman_num += syb[i]
+            num -= val[i]
+        i += 1
+    return roman_num
+
+def calcular_seculo(ano):
+    """Calcula o século e retorna em romano"""
+    seculo = (ano - 1) // 100 + 1
+    return int_to_roman(seculo)
+
 def gerar_dicas_complementares(resposta, qtd, tema):
     registrar_log(f"➕ Gerando +{qtd} dicas extras...")
     prompt = f"Jogo sobre: {resposta} (Tema: {tema}). Gere {qtd} fatos CURTOS e CURIOSOS. Resposta '{resposta}' PROIBIDA no texto. JSON: {{'dicas': []}}"
@@ -139,9 +159,8 @@ def obter_dados_carta():
         tema = random.choice(["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"])
         registrar_log(f"Tentativa {tentativas+1}: Tema '{tema}'")
         
-        # Definição de regras estritas por tema para evitar obscuridade
         regras_especificas = {
-            "PESSOA": "Deve ser uma celebridade MUNDIALMENTE famosa, ícone pop ou figura histórica que todo mundo conhece (Ex: Cantores, Atores, Atletas de elite). Evite nichos acadêmicos.",
+            "PESSOA": "Deve ser uma celebridade MUNDIALMENTE famosa, ícone pop ou figura histórica que todo mundo conhece (Ex: Cantores, Atores, Atletas de elite).",
             "LUGAR": "Países, Capitais turísticas ou Monumentos famosos (Ex: Torre Eiffel, Brasil, Disney). Evite cidades pequenas.",
             "ANO": "Anos com eventos globais massivos (Ex: 1945, 2001, 2020).",
             "DIGITAL": "Redes sociais, Apps famosos, Games populares ou Memes virais. (Ex: Instagram, WhatsApp, Minecraft).",
@@ -154,17 +173,12 @@ def obter_dados_carta():
         amostra_proibida = random.sample(st.session_state.used_answers, min(total_usadas, 50))
         proibidos_str = ", ".join(amostra_proibida)
         
-        # PROMPT REFINADO: Foco em popularidade
         prompt = f"""
         Jogo Perfil. Tema: {tema}.
-        
         REGRA DE OURO: A Resposta deve ser EXTREMAMENTE POPULAR (Nível: Conhecimento Geral/Povão).
         {instrucao_extra}
-        
         A dificuldade do jogo deve vir das DICAS (começar difícil/vago e ir facilitando), NÃO da resposta ser desconhecida.
-        
         PROIBIDO (Já saiu): {proibidos_str}.
-        
         JSON OBRIGATÓRIO: {{'tema': '{tema}', 'dicas': [lista de 20 dicas], 'resposta': 'Nome'}}
         """
         
@@ -187,6 +201,24 @@ def obter_dados_carta():
             # Remove spoilers
             dicas = [d for d in dicas if resposta.lower() not in d.lower()]
             
+            # --- LÓGICA ESPECIAL PARA ANO (ROMANO E SÉCULO) ---
+            if tema == "ANO":
+                try:
+                    # Tenta extrair apenas os números da resposta (ex: "Ano 2000" vira 2000)
+                    ano_int = int(re.sub(r'\D', '', resposta))
+                    romano = int_to_roman(ano_int)
+                    seculo = calcular_seculo(ano_int)
+                    
+                    # Adiciona as dicas especiais
+                    dicas.append(f"Em algarismos romanos: {romano}")
+                    dicas.append(f"Pertence ao Século {seculo}")
+                    
+                    # Embaralha para que não fiquem sempre no final
+                    random.shuffle(dicas)
+                    registrar_log(f"📅 Adicionadas dicas de Romano ({romano}) e Século ({seculo})")
+                except Exception as e:
+                    registrar_log(f"⚠️ Erro ao calcular ano/século: {e}")
+
             # Completa dicas se faltar
             ciclos = 0
             while len(dicas) < 20 and ciclos < 2:
