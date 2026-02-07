@@ -139,7 +139,7 @@ def calcular_seculo(ano):
     seculo = (ano - 1) // 100 + 1
     return int_to_roman(seculo)
 
-# --- AUDITORIA DE ANO (RESTAURADA) ---
+# --- AUDITORIA DE ANO ---
 def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
     """Verifica se os fatos realmente ocorreram no ano alvo"""
     registrar_log(f"🕵️ Auditando fatos para o ano {ano_alvo}...")
@@ -160,16 +160,16 @@ def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt_auditoria}],
-            temperature=0.0, # Temperatura Zero para precisão máxima
+            temperature=0.0,
             response_format={"type": "json_object"}
         )
         raw_list = json.loads(completion.choices[0].message.content).get("dicas_aprovadas", [])
         aprovadas = [sanitizar_item(x) for x in raw_list]
-        registrar_log(f"✅ Auditoria completa: {len(aprovadas)} dicas aprovadas de {len(lista_dicas_candidatas)}.")
+        registrar_log(f"✅ Auditoria completa: {len(aprovadas)} dicas aprovadas.")
         return aprovadas
     except Exception as e:
         registrar_log(f"⚠️ Erro na auditoria: {e}")
-        return lista_dicas_candidatas # Se falhar, usa as originais com risco
+        return lista_dicas_candidatas
 
 def gerar_dicas_complementares(resposta, qtd, tema):
     registrar_log(f"➕ Gerando +{qtd} dicas extras...")
@@ -211,7 +211,6 @@ def obter_dados_carta():
         else:
             instrucao_extra = regras_especificas.get(tema, "")
 
-        # Amostragem para prompt
         total_usadas = len(st.session_state.used_answers)
         amostra_proibida = random.sample(st.session_state.used_answers, min(total_usadas, 50))
         proibidos_str = ", ".join(amostra_proibida)
@@ -241,37 +240,25 @@ def obter_dados_carta():
             dicas = [sanitizar_item(d) for d in dados.get('dicas', [])]
             dicas = [d for d in dicas if resposta.lower() not in d.lower()]
             
-            # --- PROCESSAMENTO ESPECIAL PARA ANO ---
             if tema == "ANO":
                 try:
-                    # 1. Auditoria Rigorosa
                     dicas = auditar_dicas_ano(resposta, dicas)
-                    
-                    # 2. Filtro de Vagueza (Segurança Extra)
                     dicas = [d for d in dicas if "esperança" not in d.lower() and "mudança" not in d.lower() and "marco" not in d.lower()]
-
-                    # 3. Cálculo Matemático
                     ano_int = int(re.sub(r'\D', '', resposta))
                     romano = int_to_roman(ano_int)
                     seculo = calcular_seculo(ano_int)
-                    
-                    # 4. Inserção
                     dicas.append(f"Em algarismos romanos: {romano}")
                     dicas.append(f"Pertence ao Século {seculo}")
                 except Exception as e:
                     registrar_log(f"Erro processando ano: {e}")
 
-            # Embaralha tudo
             random.shuffle(dicas)
 
-            # Completa dicas se faltar
             ciclos = 0
             while len(dicas) < 20 and ciclos < 3:
                 novas = gerar_dicas_complementares(resposta, 22-len(dicas), tema)
                 if tema == "ANO":
-                    # Se for ano, audita as novas também!
                     novas = auditar_dicas_ano(resposta, novas)
-                
                 dicas.extend([n for n in novas if resposta.lower() not in n.lower()])
                 ciclos += 1
                 if not novas: break
@@ -280,10 +267,8 @@ def obter_dados_carta():
                 registrar_log("⚠️ Poucas dicas válidas. Descartando.")
                 tentativas += 1; continue
 
-            # Montagem Final
             dicas_finais = []
             idx_dica = 0
-            # Re-embaralhar para garantir posições aleatórias
             random.shuffle(dicas)
             
             for i in range(20):
@@ -296,7 +281,6 @@ def obter_dados_carta():
             dados['dicas'] = dicas_finais[:20]
             dados['resposta'] = resposta
             
-            # --- SALVAMENTO ---
             st.session_state.used_answers.append(resposta) 
             salvar_no_banco(st.session_state.sheet_con, resposta)
             
@@ -324,9 +308,16 @@ else:
     c = st.session_state.carta
     st.markdown(f"""<div class="card-theme-box"><div style="font-size: 11px; color: #95a5a6; font-weight: 700;">SOU UM(A):</div><div class="theme-value">{c.get('tema')}</div></div>""", unsafe_allow_html=True)
     
-    if st.button("👁️ REVELAR", use_container_width=True): 
-        st.session_state.revelado = True
-        registrar_log("👁️ Resposta revelada")
+    # --- LÓGICA DO BOTÃO REVELAR/OCULTAR ---
+    label_botao = "🙈 OCULTAR RESPOSTA" if st.session_state.revelado else "👁️ REVELAR RESPOSTA"
+    
+    if st.button(label_botao, use_container_width=True):
+        st.session_state.revelado = not st.session_state.revelado
+        if st.session_state.revelado:
+            registrar_log("👁️ Resposta revelada")
+        else:
+            registrar_log("🙈 Resposta ocultada")
+        st.rerun()
 
     if st.session_state.revelado: st.success(f"🏆 {c.get('resposta')}")
 
