@@ -20,11 +20,15 @@ try:
     if "GROQ_API_KEY" in st.secrets:
         api_key = st.secrets["GROQ_API_KEY"]
     else:
-        api_key = "COLOQUE_SUA_KEY_AQUI_SE_ESTIVER_RODANDO_LOCAL" 
+        # Fallback apenas para teste local, não use em produção sem secrets
+        api_key = "teste" 
     
+    if api_key == "teste" and "GROQ_API_KEY" not in st.secrets:
+        st.warning("⚠️ Chave de API não detectada. Configure 'GROQ_API_KEY' nos Secrets.")
+        
     client = Groq(api_key=api_key)
 except Exception:
-    st.error("ERRO: Configure sua chave 'GROQ_API_KEY' no painel 'Secrets' do Streamlit.")
+    st.error("ERRO CRÍTICO: Falha ao inicializar cliente Groq.")
     st.stop()
 
 # --- CSS RESPONSIVO ---
@@ -49,7 +53,7 @@ st.markdown("""
         padding-right: 1rem;
     }
 
-    /* Título Responsivo usando clamp(min, ideal, max) */
+    /* Título Responsivo */
     .main-title {
         font-size: clamp(45px, 12vw, 90px) !important; 
         font-weight: 800;
@@ -163,6 +167,7 @@ def verificar_similaridade(nova_resposta):
 # --- FUNÇÕES DE GERAÇÃO ---
 
 def gerar_dicas_complementares(resposta, quantidade_necessaria, tema):
+    # CORREÇÃO: Uso de aspas triplas para evitar erro de sintaxe
     prompt_rescue = f"""
     Estou criando um jogo sobre: {resposta} (Tema: {tema}).
     Preciso de {quantidade_necessaria} fatos NOVOS e VERDADEIROS sobre isso.
@@ -179,7 +184,8 @@ def gerar_dicas_complementares(resposta, quantidade_necessaria, tema):
     except: return []
 
 def auditar_dicas_ano(ano_alvo, lista_dicas_candidatas):
-    prompt_auditoria = f"Ano alvo: {ano_alvo}. Retorne apenas dicas confirmadas para este ano exato em JSON: {{"dicas_aprovadas": []}}"
+    # CORREÇÃO: Uso de aspas triplas aqui também
+    prompt_auditoria = f"""Ano alvo: {ano_alvo}. Retorne apenas dicas confirmadas para este ano exato em JSON: {{"dicas_aprovadas": []}}"""
     try:
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -197,7 +203,9 @@ def obter_dados_carta():
         proibidos_str = ", ".join(st.session_state.used_answers[-20:])
         
         prompt_especifico = "- RESPOSTA: ANO 4 DÍGITOS." if tema_sorteado == "ANO" else "- RESPOSTA: Algo famoso mundialmente."
-        prompt = f"Jogo Perfil. Tema: {tema_sorteado}. {prompt_especifico} Proibido: {proibidos_str}. JSON: {{"tema": "{tema_sorteado}", "dicas": [], "resposta": ""}}"
+        
+        # CORREÇÃO: Aspas triplas para proteger o JSON
+        prompt = f"""Jogo Perfil. Tema: {tema_sorteado}. {prompt_especifico} Proibido: {proibidos_str}. JSON: {{"tema": "{tema_sorteado}", "dicas": [], "resposta": ""}}"""
 
         try:
             completion = client.chat.completions.create(
@@ -209,7 +217,8 @@ def obter_dados_carta():
             dados = json.loads(completion.choices[0].message.content)
             resposta_atual = dados["resposta"]
             
-            if verificar_similaridade(resposta_atual): tentativas += 1; continue
+            if verificar_similaridade(resposta_atual): 
+                tentativas += 1; continue
             
             dicas_limpas = auditar_dicas_ano(resposta_atual, dados.get("dicas", [])) if tema_sorteado == "ANO" else dados.get("dicas", [])
 
@@ -224,26 +233,31 @@ def obter_dados_carta():
                 dicas_sem_spoiler += [nd for nd in novas if not any(p in nd.lower() for p in palavras_proibidas)]
                 ciclos += 1
 
-            if len(dicas_sem_spoiler) < 18: tentativas += 1; continue
+            if len(dicas_sem_spoiler) < 18: 
+                tentativas += 1; continue
 
             # Formatação Final com itens especiais
             dicas_finais = []
-            tem_perca = False
-            tem_palpite = False
             
             for i in range(22):
                 if len(dicas_finais) >= 20: break
+                
+                # Inserção estratégica (sem substituir dicas existentes, apenas intercalando)
                 if i == 1:
                     dicas_finais.append("2. PERCA A VEZ")
                 elif i == 11:
                     dicas_finais.append("12. UM PALPITE A QUALQUER HORA")
-                elif i < len(dicas_sem_spoiler):
+                
+                # Se ainda tem dica real para usar
+                if i < len(dicas_sem_spoiler):
                     dicas_finais.append(dicas_sem_spoiler[i])
 
             dados['dicas'] = dicas_finais[:20]
             st.session_state.used_answers.append(resposta_atual)
             return dados
-        except: tentativas += 1
+        except Exception as e: 
+            registrar_log(f"Erro: {e}")
+            tentativas += 1
     return None
 
 # --- INTERFACE ---
@@ -264,7 +278,6 @@ if not st.session_state.carta:
             st.rerun()
         else:
             with st.spinner('Auditando fatos...'):
-                st.session_state.status = "Gerando..."
                 st.session_state.carta = obter_dados_carta()
                 if st.session_state.carta:
                     st.rerun()
@@ -287,13 +300,16 @@ else:
 
     # Exibição das Dicas
     tips_html = '<div class="card-tips-box">'
-    for dica in c.get('dicas', []):
-        if "PERCA A VEZ" in dica.upper():
-            tips_html += f"<div class='hint-row' style='color:#d63031;'>🚫 {dica}</div>"
-        elif "PALPITE" in dica.upper():
-            tips_html += f"<div class='hint-row' style='color:#27ae60;'>💡 {dica}</div>"
+    for idx, dica in enumerate(c.get('dicas', [])):
+        # Tenta extrair o número da dica se a IA não mandou
+        display_text = dica if dica[0].isdigit() else f"{idx+1}. {dica}"
+        
+        if "PERCA A VEZ" in display_text.upper():
+            tips_html += f"<div class='hint-row' style='color:#d63031; background: #ffe6e6; border-radius: 5px; padding: 10px;'>🚫 {display_text}</div>"
+        elif "PALPITE" in display_text.upper():
+            tips_html += f"<div class='hint-row' style='color:#27ae60; background: #e6ffea; border-radius: 5px; padding: 10px;'>💡 {display_text}</div>"
         else:
-            tips_html += f"<div class='hint-row'>{dica}</div>"
+            tips_html += f"<div class='hint-row'>{display_text}</div>"
     tips_html += '</div>'
     st.markdown(tips_html, unsafe_allow_html=True)
     
