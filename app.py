@@ -22,7 +22,6 @@ def registrar_log(msg):
     timestamp = time.strftime("%H:%M:%S")
     formatted_msg = f"[{timestamp}] {msg}"
     st.session_state.logs.append(formatted_msg)
-    # Mantém apenas os últimos 50 logs para não pesar
     if len(st.session_state.logs) > 50:
         st.session_state.logs.pop(0)
 
@@ -33,27 +32,20 @@ def conectar_banco():
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         
-        # Carrega credenciais
         if "gcp_service_account" not in st.secrets:
             registrar_log("❌ Erro: Secrets do Google não encontrados.")
             return None, []
             
         creds_dict = dict(st.secrets["gcp_service_account"])
         
-        # Corrige quebras de linha na chave privada
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
-        
-        # Abre a planilha
         sheet = client.open("banco_perfil").sheet1 
-        
-        # Pega valores
         palavras = sheet.col_values(1)
         
-        # Remove cabeçalho
         if palavras and palavras[0] == "PALAVRAS_USADAS":
             palavras.pop(0)
             
@@ -80,9 +72,7 @@ if 'sheet_con' not in st.session_state:
     if 'used_answers' not in st.session_state:
         st.session_state.used_answers = []
     
-    # Adiciona as do banco à memória local
     st.session_state.used_answers.extend(usadas_db)
-    # Remove duplicatas
     st.session_state.used_answers = list(set(st.session_state.used_answers))
 
 # --- CONFIGURAÇÃO DA GROQ ---
@@ -96,7 +86,7 @@ except Exception:
     st.error("ERRO: Configure GROQ_API_KEY.")
     st.stop()
 
-# --- CSS RESPONSIVO ---
+# --- CSS RESPONSIVO (DESIGN MANTIDO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&display=swap');
@@ -126,11 +116,8 @@ def verificar_similaridade(nova_resposta):
     nova = sanitizar_item(nova_resposta).lower()
     for usada in st.session_state.used_answers:
         usada_clean = sanitizar_item(usada).lower()
-        # Verificação exata
         if nova == usada_clean: return True 
-        # Verificação de substring
         if nova in usada_clean or usada_clean in nova: return True 
-        # Verificação aproximada (fuzzy)
         if difflib.SequenceMatcher(None, nova, usada_clean).ratio() > 0.85: return True 
     return False
 
@@ -148,22 +135,49 @@ def obter_dados_carta():
     registrar_log("🎲 Iniciando geração de carta...")
     
     while tentativas < 4:
+        # Sorteio Uniforme
         tema = random.choice(["PESSOA", "LUGAR", "ANO", "DIGITAL", "COISA"])
         registrar_log(f"Tentativa {tentativas+1}: Tema '{tema}'")
         
-        # Amostragem para não estourar o prompt (pega 50 aleatórias das já usadas)
+        # Definição de regras estritas por tema para evitar obscuridade
+        regras_especificas = {
+            "PESSOA": "Deve ser uma celebridade MUNDIALMENTE famosa, ícone pop ou figura histórica que todo mundo conhece (Ex: Cantores, Atores, Atletas de elite). Evite nichos acadêmicos.",
+            "LUGAR": "Países, Capitais turísticas ou Monumentos famosos (Ex: Torre Eiffel, Brasil, Disney). Evite cidades pequenas.",
+            "ANO": "Anos com eventos globais massivos (Ex: 1945, 2001, 2020).",
+            "DIGITAL": "Redes sociais, Apps famosos, Games populares ou Memes virais. (Ex: Instagram, WhatsApp, Minecraft).",
+            "COISA": "Objetos do cotidiano, invenções revolucionárias ou marcas gigantes."
+        }
+        instrucao_extra = regras_especificas.get(tema, "")
+
+        # Amostragem para prompt
         total_usadas = len(st.session_state.used_answers)
         amostra_proibida = random.sample(st.session_state.used_answers, min(total_usadas, 50))
         proibidos_str = ", ".join(amostra_proibida)
         
-        prompt = f"Jogo Perfil. Tema: {tema}. Resposta deve ser DIFÍCIL e FAMOSA. PROIBIDO: {proibidos_str}. JSON: {{'tema': '{tema}', 'dicas': [], 'resposta': ''}}"
+        # PROMPT REFINADO: Foco em popularidade
+        prompt = f"""
+        Jogo Perfil. Tema: {tema}.
+        
+        REGRA DE OURO: A Resposta deve ser EXTREMAMENTE POPULAR (Nível: Conhecimento Geral/Povão).
+        {instrucao_extra}
+        
+        A dificuldade do jogo deve vir das DICAS (começar difícil/vago e ir facilitando), NÃO da resposta ser desconhecida.
+        
+        PROIBIDO (Já saiu): {proibidos_str}.
+        
+        JSON OBRIGATÓRIO: {{'tema': '{tema}', 'dicas': [lista de 20 dicas], 'resposta': 'Nome'}}
+        """
         
         try:
-            resp = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}], temperature=0.6, response_format={"type":"json_object"})
+            resp = client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role":"user","content":prompt}], temperature=0.7, response_format={"type":"json_object"})
             dados = json.loads(resp.choices[0].message.content)
             resposta = sanitizar_item(dados.get('resposta', ''))
             
             registrar_log(f"IA Sugeriu: {resposta}")
+
+            if not resposta or len(resposta) < 2:
+                registrar_log("Resposta inválida. Tentando de novo...")
+                tentativas += 1; continue
 
             if verificar_similaridade(resposta):
                 registrar_log(f"🚫 Repetida ({resposta}). Tentando outra...")
@@ -246,10 +260,8 @@ else:
         st.rerun()
 
 st.divider()
-# Área de Logs Restaurada
 with st.expander("🛠️ Logs do Sistema (Debug)"):
     if not st.session_state.logs:
         st.write("Aguardando operações...")
-    # Mostra do mais recente para o mais antigo
     for log in reversed(st.session_state.logs):
         st.markdown(f"<div class='log-text'>{log}</div>", unsafe_allow_html=True)
